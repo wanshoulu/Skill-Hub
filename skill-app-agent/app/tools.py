@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import os
 import sys
 import time
 from contextvars import ContextVar
@@ -27,12 +28,12 @@ workspace_cwd: ContextVar[str] = ContextVar(
 def _resolve_script(skill_name: str, script_path: str) -> Path:
     root = Path(storage_config.skills_root).resolve()
     skill_dir = (root / skill_name).resolve()
-    if not str(skill_dir).startswith(str(root)) or skill_dir == root:
+    if not str(skill_dir).startswith(str(root) + os.sep) and skill_dir != root:
         raise ValueError(f"技能名不合法: {skill_name}")
     if not skill_dir.is_dir():
         raise FileNotFoundError(f"技能未安装: {skill_name}")
     script = (skill_dir / script_path).resolve()
-    if not str(script).startswith(str(skill_dir)):
+    if not str(script).startswith(str(skill_dir) + os.sep) and script != skill_dir:
         raise ValueError(f"脚本路径越界，已拒绝: {script_path}")
     if not script.is_file():
         raise FileNotFoundError(f"脚本不存在: {skill_name}/{script_path}")
@@ -89,6 +90,7 @@ async def run_skill_script(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=SCRIPT_TIMEOUT)
     except asyncio.TimeoutError:
         proc.kill()
+        await proc.wait()
         return {
             "ok": False,
             "error": f"脚本执行超时（{int(SCRIPT_TIMEOUT)}秒），已终止",

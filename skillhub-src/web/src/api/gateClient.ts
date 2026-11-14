@@ -54,6 +54,7 @@ export interface GateRun {
   status: 'running' | 'passed' | 'failed' | string
   level: string
   name: string
+  draft_id?: string
   ns?: string | null
   content_digest?: string
   dataset_scope?: string
@@ -300,7 +301,7 @@ function parseSseBlock(block: string): { event: string; data: unknown } | null {
   let data = ''
   for (const line of block.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim()
-    else if (line.startsWith('data:')) data += line.slice(5).trim()
+    else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim()
   }
   if (!data) return null
   try {

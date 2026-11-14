@@ -12,6 +12,7 @@ API 契约（参照 skillhub-src/plugins/dsh/src/host/registry-adapter.ts）：
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -82,6 +83,11 @@ async def download_skill_zip(download_url: str) -> bytes:
     url = download_url
     if url.startswith("/"):
         url = f"{registry_config.base_url}{url}"
+    # SSRF 防护：下载 URL 主机必须与注册中心一致
+    url_host = urlparse(url).hostname
+    registry_host = urlparse(registry_config.base_url).hostname
+    if url_host != registry_host:
+        raise ValueError(f"download_url 主机与注册中心不一致: {url_host} != {registry_host}")
     async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=True) as client:
         resp = await client.get(url, headers=_auth_headers())
         resp.raise_for_status()

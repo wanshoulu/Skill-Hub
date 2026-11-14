@@ -137,8 +137,10 @@ export function runBasic({ name, files }) {
     // 整段规则（跨行 HTML 注释）单独扫
     for (const { re, level, rule, message } of injRules) {
       if (rule === 'hidden-html') continue;
-      const m = f.text.match(re);
-      if (m) injFindings.push({ level, rule, message: `${message}：\`${m[0].slice(0, 60)}\``, file: f.path });
+      const matches = f.text.match(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'));
+      if (matches) {
+        for (const m of matches) injFindings.push({ level, rule, message: `${message}：\`${m.slice(0, 60)}\``, file: f.path });
+      }
     }
     const hidden = f.text.match(/<!--[\s\S]*?-->/g) || [];
     for (const h of hidden) {

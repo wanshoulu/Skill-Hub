@@ -240,7 +240,7 @@ async function classifyIntent(message, hasDraft) {
       {
         role: 'system',
         content:
-          '你是「技能构建」平台的意图分类器。四类任务：\n' +
+          '你是「技能构建」平台的意图分类器。五类任务：\n' +
           '- create：创建新技能、修改技能内容、对话式生成 SKILL.md\n' +
           '- validate：对当前草稿做检查扫描（五项静态检查）\n' +
           '- eval：对当前草稿跑技能测评（真实用例打分）\n' +
@@ -324,7 +324,7 @@ function parseSseBlock(block) {
   let data = '';
   for (const line of block.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim();
-    else if (line.startsWith('data:')) data += line.slice(5).trim();
+    else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim();
   }
   if (!data) return null;
   try {

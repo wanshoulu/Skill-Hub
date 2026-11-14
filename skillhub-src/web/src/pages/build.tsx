@@ -509,7 +509,7 @@ export function BuildPage() {
   const loadGateHistory = useCallback(() => {
     if (!draftIdRef.current) return
     void listRuns('gate')
-      .then((runs) => setGateHistory(runs.filter((r) => r.name && r.status !== 'running').slice(0, 10)))
+      .then((runs) => setGateHistory(runs.filter((r) => r.draft_id === draftIdRef.current && r.status !== 'running').slice(0, 10)))
       .catch(() => {})
   }, [])
 
@@ -544,7 +544,7 @@ export function BuildPage() {
           <Button variant="outline" size="sm" onClick={openLibrary}>
             <Library className="mr-1 size-4" /> 技能库
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setTokenOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => { setTokenDraft(token); setTokenOpen(true) }}>
             <KeyRound className="mr-1 size-4" /> {token ? '网关令牌已配置' : '配置网关令牌'}
           </Button>
         </div>

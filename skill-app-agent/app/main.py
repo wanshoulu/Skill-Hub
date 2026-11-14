@@ -217,6 +217,8 @@ async def chat(request: Request, _: None = Depends(require_auth)) -> StreamingRe
     message = str(body.get("message") or "").strip()
     session_id = str(body.get("session_id") or "").strip() or uuid.uuid4().hex[:12]
     history = body.get("history") or []
+    if not isinstance(history, list):
+        history = []
 
     async def err_stream(msg: str):
         yield sse_encode("error", {"error": msg})
@@ -226,6 +228,11 @@ async def chat(request: Request, _: None = Depends(require_auth)) -> StreamingRe
         return StreamingResponse(err_stream("message is required"), media_type="text/event-stream")
 
     _sessions[session_id] = time.time()
+    # 清理超过 1 小时的过期会话，防止 _sessions 无限增长
+    _cutoff = time.time() - 3600
+    for sid in list(_sessions):
+        if _sessions[sid] < _cutoff:
+            del _sessions[sid]
 
     async def event_stream():
         queue: asyncio.Queue = asyncio.Queue()
