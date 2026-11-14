@@ -10,12 +10,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import {
-  Bot, Copy, Download, FileText, Gauge, KeyRound, Library, RefreshCw,
-  Save, Send, ShieldCheck, Sparkles, X,
+  Bot, BookOpen, Check, ChevronDown, ChevronUp, Copy, Download, FileCode, FileText,
+  Folder, FolderOpen, Gauge, KeyRound, Library, Loader2, RefreshCw,
+  Save, Send, ShieldCheck, Sparkles, Wrench, X,
 } from 'lucide-react'
 import { toast } from '@/shared/lib/toast'
 import { MarkdownRenderer } from '@/features/skill/markdown-renderer'
 import { stripMarkdownFrontmatter } from '@/features/skill/markdown-frontmatter'
+import { CodeRenderer } from '@/features/skill/code-renderer'
+import { getLanguageForHighlight } from '@/features/skill/file-type-utils'
 import ReactDiffViewer from 'react-diff-viewer-continued'
 import {
   adoptEvolveJob, getDraft, getDraftZip, getEvolveJob, getGateToken, getRun,
@@ -98,6 +101,13 @@ type ChatMsg =
       streaming?: boolean
     }
 
+// ── 时间线步骤模型 ─────────────────────────────────────────────────
+
+type TimelineStep =
+  | { id: string; type: 'phase'; name: string; status: 'running' | 'done'; detail?: string; timestamp: number }
+  | { id: string; type: 'skill_load'; skill: string; timestamp: number }
+  | { id: string; type: 'tool'; tool: string; skill?: string; script?: string; status?: string; timestamp: number }
+
 const INTENT_CHIPS: Array<{ label: string; mode: string; prompt: string }> = [
   { label: '技能创建', mode: 'create', prompt: '帮我创建一个技能：' },
   { label: '技能检查扫描', mode: 'validate', prompt: '对当前草稿执行技能检查扫描' },
@@ -172,6 +182,11 @@ export function BuildPage() {
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
   const [zipping, setZipping] = useState(false)
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
+
+  // 时间线
+  const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>([])
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false)
 
   // 运行记录
   const [gateRun, setGateRun] = useState<GateRun | null>(null)
@@ -355,6 +370,8 @@ export function BuildPage() {
       const controller = new AbortController()
       abortRef.current = controller
       setSending(true)
+      setTimelineSteps([])
+      setTimelineCollapsed(false)
       const asstId = nextMsgId()
       const history = messagesRef.current
         .map((m) => ({
@@ -389,12 +406,29 @@ export function BuildPage() {
           mode: forcedMode,
           signal: controller.signal,
           handlers: {
-            onPhase: (phase) =>
+            onPhase: (phase) => {
               patch((m) => {
                 const phases = [...m.phases.filter((ph) => ph.name !== phase.name), phase]
                 return { ...m, phases }
-              }),
+              })
+              setTimelineSteps((prev) => {
+                const idx = prev.findIndex((s) => s.type === 'phase' && s.name === phase.name)
+                const step: TimelineStep = { id: `phase-${phase.name}`, type: 'phase', name: phase.name, status: phase.status as 'running' | 'done', detail: phase.detail, timestamp: Date.now() }
+                if (idx >= 0) {
+                  const next = [...prev]
+                  next[idx] = step
+                  return next
+                }
+                return [...prev, step]
+              })
+            },
             onToken: (text2) => patch((m) => ({ ...m, content: m.content + text2 })),
+            onSkillLoad: (skill) => {
+              setTimelineSteps((prev) => [...prev, { id: `skill_load-${skill}-${Date.now()}`, type: 'skill_load', skill, timestamp: Date.now() }])
+            },
+            onTool: (e) => {
+              setTimelineSteps((prev) => [...prev, { id: `tool-${e.tool}-${Date.now()}`, type: 'tool', tool: e.tool, skill: e.skill, script: e.script, status: e.status, timestamp: Date.now() }])
+            },
             onCard: (card) => {
               const { note } = handleCard(card)
               patch((m) => ({ ...m, cards: [...m.cards, { kind: 'card', card, note }] }))
@@ -681,7 +715,14 @@ export function BuildPage() {
         </div>
 
         {/* 右：工作区 */}
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
+          {/* 进度时间线 */}
+          <ProgressTimeline
+            steps={timelineSteps}
+            collapsed={timelineCollapsed}
+            onToggleCollapse={() => setTimelineCollapsed((v) => !v)}
+            active={sending}
+          />
           <Tabs defaultValue="draft" className="flex min-h-0 flex-1 flex-col gap-3">
             <TabsList className="w-fit">
               <TabsTrigger value="draft">草稿</TabsTrigger>
@@ -691,59 +732,41 @@ export function BuildPage() {
             </TabsList>
 
             {/* 草稿 */}
-            <TabsContent value="draft" className="flex min-h-0 flex-1 flex-col gap-3 data-[state=inactive]:hidden">
+            <TabsContent value="draft" className="flex min-h-0 flex-1 flex-col gap-2 data-[state=inactive]:hidden">
+              {/* 顶部工具栏 */}
               <div className="flex flex-wrap items-end gap-2">
-                <div className="min-w-[180px] flex-1 space-y-1">
-                  <Label htmlFor="draft-name">草稿名称（技能 name）</Label>
+                <div className="min-w-[120px] flex-1 space-y-1">
+                  <Label htmlFor="draft-name">草稿名称</Label>
                   <Input id="draft-name" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="my-skill" />
                 </div>
-                <Button onClick={() => void saveToServer()} disabled={saving || !draftName || !draftMd}>
-                  <Save className="mr-1 size-4" /> {draftId ? '更新草稿' : '保存草稿'}
+                <Button onClick={() => void saveToServer()} disabled={saving || !draftName || !draftMd} className="h-8">
+                  <Save className="mr-1 size-3.5" /> {draftId ? '更新' : '保存'}
                 </Button>
-                <Button variant="outline" onClick={() => void downloadZip()} disabled={!draftId || zipping}>
-                  <Download className="mr-1 size-4" /> 下载 zip
+                <Button variant="outline" onClick={() => void downloadZip()} disabled={!draftId || zipping} className="h-8">
+                  <Download className="mr-1 size-3.5" /> zip
                 </Button>
-                <Button variant="ghost" onClick={() => setPreview((v) => !v)}>{preview ? '编辑' : '预览'}</Button>
               </div>
-              {preview ? (
-                <div className="min-h-[40vh] flex-1 overflow-y-auto rounded-lg border p-3 text-sm">
-                  <MarkdownRenderer content={stripMarkdownFrontmatter(draftMd) || draftMd} />
-                </div>
-              ) : (
-                <Textarea
-                  value={draftMd}
-                  onChange={(e) => setDraftMd(e.target.value)}
-                  placeholder={'---\nname: my-skill\ndescription: 一句话触发描述\n---\n\n# 何时使用\n…'}
-                  className="min-h-[40vh] flex-1 resize-none font-mono text-xs"
-                />
-              )}
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="space-y-1">
-                  <Label>测评数据集（dataset.yaml）</Label>
-                  <Textarea
-                    value={datasetYaml}
-                    onChange={(e) => setDatasetYaml(e.target.value)}
-                    placeholder="evals/dataset.yaml（可留空）"
-                    className="h-28 resize-none font-mono text-xs"
+              {/* 文件树 + 内容预览 */}
+              <div className="flex min-h-0 flex-1 gap-2">
+                <div className="w-[140px] shrink-0 overflow-y-auto rounded-md border bg-muted/20 p-1">
+                  <DraftFileTree
+                    files={draftFiles}
+                    selectedPath={selectedFilePath}
+                    onSelect={setSelectedFilePath}
+                    onRemove={(path) => setDraftFiles((prev) => prev.filter((f) => f.path !== path))}
                   />
-                  <p className="text-xs text-muted-foreground">dataset 随草稿保存到 evals/dataset.yaml，发布门禁 release 级必填。</p>
                 </div>
-                <div className="space-y-1">
-                  <Label>附件文件</Label>
-                  <div className="h-28 overflow-y-auto rounded-md border p-2 text-xs">
-                    {draftFiles.length === 0 ? (
-                      <p className="text-muted-foreground">对话中 ```skill-file 代码块会自动加入这里。</p>
-                    ) : (
-                      draftFiles.map((f) => (
-                        <div key={f.path} className="flex items-center justify-between gap-2 py-0.5">
-                          <span className="truncate font-mono">{f.path}</span>
-                          <button type="button" onClick={() => setDraftFiles((prev) => prev.filter((x) => x.path !== f.path))}>
-                            <X className="size-3" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <FilePreviewPanel
+                    selectedPath={selectedFilePath}
+                    draftFiles={draftFiles}
+                    draftMd={draftMd}
+                    onDraftMdChange={setDraftMd}
+                    datasetYaml={datasetYaml}
+                    onDatasetYamlChange={setDatasetYaml}
+                    preview={preview}
+                    onTogglePreview={() => setPreview((v) => !v)}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -890,6 +913,322 @@ export function BuildPage() {
 }
 
 // ── 子视图 ───────────────────────────────────────────────────────
+
+// 进度时间线组件
+function ProgressTimeline({
+  steps,
+  collapsed,
+  onToggleCollapse,
+  active,
+}: {
+  steps: TimelineStep[]
+  collapsed: boolean
+  onToggleCollapse: () => void
+  active: boolean
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (scrollRef.current && !collapsed) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [steps, collapsed])
+  if (steps.length === 0) return null
+
+  // 折叠态：单行摘要
+  if (collapsed || !active) {
+    const doneCount = steps.filter((s) => s.type === 'phase' && s.status === 'done').length
+    const runningStep = steps.find((s): s is Extract<TimelineStep, { type: 'phase' }> => s.type === 'phase' && s.status === 'running')
+    return (
+      <button
+        onClick={onToggleCollapse}
+        className="flex w-full items-center gap-2 rounded-md border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted/50"
+      >
+        {active ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 text-emerald-600" />}
+        <span className="flex-1 text-left">
+          {active && runningStep
+            ? `正在执行：${runningStep.name}${runningStep.detail ? ` — ${runningStep.detail}` : ''}`
+            : `已完成 ${doneCount} 步${steps.filter((s) => s.type !== 'phase').length > 0 ? ` · ${steps.filter((s) => s.type !== 'phase').length} 个操作` : ''}`}
+        </span>
+        <ChevronDown className="h-3 w-3" />
+      </button>
+    )
+  }
+
+  // 展开态：垂直时间线
+  return (
+    <div className="rounded-md border bg-muted/20">
+      <div className="flex items-center justify-between border-b px-3 py-1.5">
+        <span className="text-xs font-medium text-muted-foreground">
+          {active ? <Loader2 className="mr-1 inline h-3 w-3 animate-spin" /> : null}
+          生成进度
+        </span>
+        <button onClick={onToggleCollapse} className="text-muted-foreground hover:text-foreground">
+          <ChevronUp className="h-3 w-3" />
+        </button>
+      </div>
+      <div ref={scrollRef} className="max-h-[35vh] overflow-y-auto p-2">
+        {steps.map((step, i) => {
+          const isLast = i === steps.length - 1
+          if (step.type === 'phase') {
+            const isDone = step.status === 'done'
+            const isRunning = step.status === 'running'
+            return (
+              <div key={step.id} className="flex gap-2">
+                <div className="flex flex-col items-center">
+                  <div className={`flex h-4 w-4 items-center justify-center rounded-full text-[8px] ${
+                    isDone ? 'bg-emerald-600 text-white' : isRunning ? 'bg-blue-600 text-white' : 'border border-muted-foreground'
+                  } ${isRunning ? 'animate-pulse' : ''}`}>
+                    {isDone ? '✓' : isRunning ? '●' : '○'}
+                  </div>
+                  {!isLast && <div className="w-px flex-1 bg-border" />}
+                </div>
+                <div className={`flex-1 ${isLast ? '' : 'pb-3'}`}>
+                  <div className={`text-xs font-medium ${isDone ? 'text-muted-foreground' : isRunning ? 'text-blue-600' : 'text-foreground'}`}>
+                    {step.name}
+                  </div>
+                  {step.detail && (
+                    <div className="text-[11px] text-muted-foreground">{step.detail}</div>
+                  )}
+                </div>
+              </div>
+            )
+          }
+          if (step.type === 'skill_load') {
+            return (
+              <div key={step.id} className="flex gap-2">
+                <div className="flex flex-col items-center">
+                  <div className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-600 text-white text-[8px]">
+                    <BookOpen className="h-2.5 w-2.5" />
+                  </div>
+                  {!isLast && <div className="w-px flex-1 bg-border" />}
+                </div>
+                <div className={`flex-1 ${isLast ? '' : 'pb-3'}`}>
+                  <div className="text-xs text-sky-700 dark:text-sky-400">加载技能：{step.skill}</div>
+                </div>
+              </div>
+            )
+          }
+          // tool
+          return (
+            <div key={step.id} className="flex gap-2">
+              <div className="flex flex-col items-center">
+                <div className="flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 text-white text-[8px]">
+                  <Wrench className="h-2.5 w-2.5" />
+                </div>
+                {!isLast && <div className="w-px flex-1 bg-border" />}
+              </div>
+              <div className={`flex-1 ${isLast ? '' : 'pb-3'}`}>
+                <div className="text-xs text-violet-700 dark:text-violet-400">
+                  执行脚本{step.skill ? `：${step.skill}` : ''}{step.script ? `/${step.script}` : ''}
+                  {step.status ? ` (${step.status})` : ''}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// 草稿文件树组件
+function DraftFileTree({
+  files,
+  selectedPath,
+  onSelect,
+  onRemove,
+}: {
+  files: GateDraftFile[]
+  selectedPath: string | null
+  onSelect: (path: string) => void
+  onRemove: (path: string) => void
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // 按路径构建目录树
+  type TreeNode = { name: string; path: string; isDir: boolean; children: Map<string, TreeNode> }
+  const root: TreeNode = { name: '', path: '', isDir: true, children: new Map() }
+  for (const f of files) {
+    const parts = f.path.split('/')
+    let cur = root
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]
+      const isLast = i === parts.length - 1
+      const path = parts.slice(0, i + 1).join('/')
+      if (!cur.children.has(part)) {
+        cur.children.set(part, { name: part, path, isDir: !isLast, children: new Map() })
+      }
+      cur = cur.children.get(part)!
+    }
+  }
+
+  const toggleDir = (path: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const renderNode = (node: TreeNode, depth: number): React.ReactNode => {
+    const indent = { paddingLeft: `${depth * 12 + 4}px` }
+    if (node.isDir) {
+      const isExpanded = expanded.has(node.path)
+      return (
+        <div key={node.path}>
+          <button
+            style={indent}
+            onClick={() => toggleDir(node.path)}
+            className="flex w-full items-center gap-1 py-1 text-xs hover:bg-muted/50 rounded"
+          >
+            {isExpanded ? <FolderOpen className="h-3 w-3 text-amber-500" /> : <Folder className="h-3 w-3 text-amber-500" />}
+            <span className="text-muted-foreground">{node.name}/</span>
+          </button>
+          {isExpanded && Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name)).map((child) => renderNode(child, depth + 1))}
+        </div>
+      )
+    }
+    const isSelected = selectedPath === node.path
+    return (
+      <div key={node.path} className="group flex items-center" style={indent}>
+        <button
+          onClick={() => onSelect(node.path)}
+          className={`flex flex-1 items-center gap-1 py-1 pr-1 text-xs rounded ${
+            isSelected ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'hover:bg-muted/50'
+          }`}
+        >
+          <FileCode className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <span className="truncate">{node.name}</span>
+        </button>
+        <button
+          onClick={() => onRemove(node.path)}
+          className="ml-1 hidden group-hover:block text-muted-foreground hover:text-destructive"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {/* SKILL.md 虚拟根节点 */}
+      <button
+        onClick={() => onSelect('__SKILL_MD__')}
+        className={`flex w-full items-center gap-1 px-1 py-1 text-xs rounded ${
+          selectedPath === null || selectedPath === '__SKILL_MD__' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'hover:bg-muted/50'
+        }`}
+      >
+        <FileText className="h-3 w-3 shrink-0 text-primary" />
+        <span className="truncate">SKILL.md</span>
+      </button>
+
+      {/* 其他文件 */}
+      {Array.from(root.children.values()).sort((a, b) => a.name.localeCompare(b.name)).map((child) => renderNode(child, 0))}
+
+      {/* dataset.yaml 虚拟节点 */}
+      <button
+        onClick={() => onSelect('__DATASET_YAML__')}
+        className={`flex w-full items-center gap-1 px-1 py-1 text-xs rounded ${
+          selectedPath === '__DATASET_YAML__' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'hover:bg-muted/50'
+        }`}
+      >
+        <FileText className="h-3 w-3 shrink-0 text-orange-500" />
+        <span className="truncate">dataset.yaml</span>
+      </button>
+    </div>
+  )
+}
+
+// 文件内容预览面板
+function FilePreviewPanel({
+  selectedPath,
+  draftFiles,
+  draftMd,
+  onDraftMdChange,
+  datasetYaml,
+  onDatasetYamlChange,
+  preview,
+  onTogglePreview,
+}: {
+  selectedPath: string | null
+  draftFiles: GateDraftFile[]
+  draftMd: string
+  onDraftMdChange: (v: string) => void
+  datasetYaml: string
+  onDatasetYamlChange: (v: string) => void
+  preview: boolean
+  onTogglePreview: () => void
+}) {
+  // SKILL.md
+  if (selectedPath === null || selectedPath === '__SKILL_MD__') {
+    return (
+      <div className="flex h-full flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-muted-foreground">SKILL.md</span>
+          <Button size="sm" variant="ghost" onClick={onTogglePreview} className="h-6 px-2 text-xs">
+            {preview ? '编辑' : '预览'}
+          </Button>
+        </div>
+        {preview ? (
+          <div className="flex-1 overflow-y-auto rounded border bg-background p-2">
+            <MarkdownRenderer content={stripMarkdownFrontmatter(draftMd)} />
+          </div>
+        ) : (
+          <Textarea
+            value={draftMd}
+            onChange={(e) => onDraftMdChange(e.target.value)}
+            className="flex-1 resize-none font-mono text-xs"
+            placeholder="SKILL.md 内容（frontmatter + 正文）"
+          />
+        )}
+      </div>
+    )
+  }
+
+  // dataset.yaml
+  if (selectedPath === '__DATASET_YAML__') {
+    return (
+      <div className="flex h-full flex-col gap-1">
+        <span className="text-xs font-medium text-muted-foreground">dataset.yaml</span>
+        <Textarea
+          value={datasetYaml}
+          onChange={(e) => onDatasetYamlChange(e.target.value)}
+          className="flex-1 resize-none font-mono text-xs"
+          placeholder="dataset.yaml（测评用例集）"
+        />
+      </div>
+    )
+  }
+
+  // 其他文件：只读预览
+  const file = draftFiles.find((f) => f.path === selectedPath)
+  if (!file) {
+    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">选择一个文件查看内容</div>
+  }
+
+  const ext = file.path.split('.').pop()?.toLowerCase() || ''
+  const isMarkdown = ext === 'md' || ext === 'mdx'
+
+  return (
+    <div className="flex h-full flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="truncate text-xs font-medium text-muted-foreground">{file.path}</span>
+        <span className="text-[10px] text-muted-foreground">只读</span>
+      </div>
+      <div className="flex-1 overflow-y-auto rounded border bg-background p-2">
+        {isMarkdown ? (
+          <MarkdownRenderer content={file.content} />
+        ) : ext === 'yaml' || ext === 'yml' ? (
+          <pre className="text-xs whitespace-pre-wrap">{file.content}</pre>
+        ) : (
+          <CodeRenderer code={file.content} language={getLanguageForHighlight(file.path)} className="text-xs" />
+        )}
+      </div>
+    </div>
+  )
+}
 
 function StagesView({ run }: { run: GateRun }) {
   const stages = run.stages || []

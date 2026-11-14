@@ -277,9 +277,18 @@ export interface AgentPhaseEvent {
   detail?: string
 }
 
+export interface AgentToolEvent {
+  tool: string
+  skill?: string
+  script?: string
+  status?: string
+}
+
 export interface AgentChatHandlers {
   onPhase?: (phase: AgentPhaseEvent) => void
   onToken?: (text: string) => void
+  onSkillLoad?: (skill: string) => void
+  onTool?: (e: AgentToolEvent) => void
   onCard?: (card: AgentCard) => void
   onResult?: (answer: string) => void
   onError?: (message: string) => void
@@ -364,6 +373,12 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
                   break
                 case 'token':
                   h.onToken?.(String((ev.data as { text?: string })?.text ?? ''))
+                  break
+                case 'skill_load':
+                  h.onSkillLoad?.(String((ev.data as { skill?: string })?.skill ?? ''))
+                  break
+                case 'tool':
+                  h.onTool?.(ev.data as AgentToolEvent)
                   break
                 case 'card':
                   h.onCard?.(ev.data as AgentCard)
