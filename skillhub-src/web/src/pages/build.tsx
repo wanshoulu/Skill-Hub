@@ -561,7 +561,15 @@ export function BuildPage() {
             <Library className="mr-1 size-4" /> 技能库
           </Button>
           <Button variant="outline" size="sm" onClick={() => { setTokenDraft(token); setTokenOpen(true) }}>
-            <KeyRound className="mr-1 size-4" /> {token ? '网关令牌已配置' : '配置网关令牌'}
+            <KeyRound className="mr-1 size-4" />
+            {token ? (
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                令牌已配置
+              </span>
+            ) : (
+              '配置网关令牌'
+            )}
           </Button>
         </div>
       </div>
@@ -571,10 +579,23 @@ export function BuildPage() {
         <div className="flex min-h-[50vh] flex-col rounded-lg border lg:w-[55%]">
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             {messages.length === 0 && (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-                <Bot className="size-8" />
-                <p>描述你想创建的技能，或用右侧/下方指令对当前草稿执行检查、测评、进化。</p>
-                <p className="text-xs">产物会自动提取为草稿，左侧工作区可编辑、检查、测评、进化。</p>
+              <div className="flex h-full flex-col items-center justify-center gap-2.5 text-center text-sm text-muted-foreground">
+                <Bot className="size-8 opacity-70" />
+                <p>描述你想创建的技能，或对当前草稿执行检查、测评、进化。</p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {INTENT_CHIPS.map((chip) => (
+                    <button
+                      key={chip.mode}
+                      type="button"
+                      disabled={!canChat}
+                      onClick={() => { setMode(chip.mode); setInput(chip.prompt) }}
+                      className="rounded-full border px-2.5 py-1 text-xs transition-colors hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs">对话产物会自动提取为草稿，在右侧工作区编辑、检查、测评、进化。</p>
               </div>
             )}
             {messages.map((m) =>
@@ -698,7 +719,7 @@ export function BuildPage() {
               )}
               <div className="grid gap-3 md:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>附件（{draftFiles.length}）</Label>
+                  <Label>测评数据集（dataset.yaml）</Label>
                   <Textarea
                     value={datasetYaml}
                     onChange={(e) => setDatasetYaml(e.target.value)}
@@ -757,8 +778,13 @@ export function BuildPage() {
                 <div className="space-y-1 text-xs text-muted-foreground">
                   <p className="font-medium text-foreground">历史 run</p>
                   {gateHistory.map((r) => (
-                    <button key={r.id} type="button" onClick={() => setGateRun(r)} className="block truncate hover:text-foreground">
-                      {r.id} · {r.name} · {r.level} · {r.status}
+                    <button key={r.id} type="button" onClick={() => setGateRun(r)} className="flex w-full items-center gap-1.5 truncate text-left hover:text-foreground">
+                      <span
+                        className={`size-1.5 shrink-0 rounded-full ${r.status === 'passed' ? 'bg-emerald-500' : r.status === 'degraded' ? 'bg-amber-500' : 'bg-red-500'}`}
+                        aria-hidden
+                      />
+                      <span className="font-mono">{r.id}</span>
+                      <span className="truncate">{r.name} · {r.level}</span>
                     </button>
                   ))}
                 </div>

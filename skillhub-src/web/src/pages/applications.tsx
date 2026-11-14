@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import {
@@ -281,7 +282,15 @@ export function ApplicationsPage() {
             <RefreshCw className="mr-1 size-4" /> 新会话
           </Button>
           <Button variant="outline" size="sm" onClick={() => setTokenOpen(true)}>
-            <KeyRound className="mr-1 size-4" /> {token ? '令牌已配置' : '配置令牌'}
+            <KeyRound className="mr-1 size-4" />
+            {token ? (
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
+                令牌已配置
+              </span>
+            ) : (
+              '配置令牌'
+            )}
           </Button>
         </div>
       </div>
@@ -421,10 +430,9 @@ export function ApplicationsPage() {
         <div className="flex min-h-[55vh] min-w-0 flex-1 flex-col rounded-lg border">
           <div className="flex-1 space-y-3 overflow-y-auto p-3">
             {messages.length === 0 && (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-                <Sparkles className="size-8" />
-                <p>预置 OpenJiuWen DeepAgent：注册中心技能安装后即注册给 Agent。</p>
-                <p className="text-xs">对话即真实试运行：技能按需加载、脚本真实执行，观察下方时间线验证 agent+skill 全链路。</p>
+              <div className="flex h-full flex-col items-center justify-center gap-2.5 text-center text-sm text-muted-foreground">
+                <Sparkles className="size-8 opacity-70" />
+                <p>向 Agent 发消息，真实试运行已安装的技能。</p>
                 <div className="mt-1 flex flex-wrap justify-center gap-1.5">
                   {PROMPT_CHIPS.map((p) => (
                     <button
@@ -437,6 +445,7 @@ export function ApplicationsPage() {
                     </button>
                   ))}
                 </div>
+                <p className="text-xs">技能按需加载、脚本真实执行，时间线展示加载与执行全过程。</p>
               </div>
             )}
             {messages.map((m) =>
@@ -506,12 +515,12 @@ export function ApplicationsPage() {
                 </button>
               ))}
             </div>
-            <div className="flex gap-2">
-              <textarea
+            <div className="flex items-end gap-2">
+              <Textarea
                 value={input}
                 rows={2}
                 placeholder={sending ? 'Agent 运行中…' : '向 Agent 发送消息（Enter 发送，Shift+Enter 换行）'}
-                className="flex-1 resize-none rounded-md border bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="min-h-0 resize-none"
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -520,7 +529,7 @@ export function ApplicationsPage() {
                   }
                 }}
               />
-              <Button className="h-auto self-stretch" disabled={!canChat || !input.trim()} onClick={() => void send(input)}>
+              <Button size="icon" disabled={!canChat || !input.trim()} onClick={() => void send(input)}>
                 <Send className="size-4" />
               </Button>
             </div>
@@ -535,7 +544,7 @@ export function ApplicationsPage() {
       <Dialog open={tokenOpen} onOpenChange={setTokenOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>配置访问令牌</DialogTitle>
+            <DialogTitle>配置网关令牌（GATE_TOKEN）</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <p className="text-xs text-muted-foreground">
