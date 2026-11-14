@@ -107,7 +107,10 @@ export function ApplicationsPage() {
   // 首次加载 + 令牌变化后重载
   useEffect(() => {
     if (!token) {
+      setProfile(null)
       setProfileErr('未配置访问令牌：请点击右上角「配置令牌」')
+      setRegistry(null)
+      setRegistryErr('')
       return
     }
     void loadProfile()
@@ -140,13 +143,15 @@ export function ApplicationsPage() {
     try {
       await installSkill(s.namespace, s.slug)
       toast.success(`已安装技能 ${s.slug}（v${s.latestVersion}）`)
-      await loadProfile()
-      await searchRegistry(query)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
-    } finally {
       setInstalling(null)
+      return
     }
+    // 刷新失败不掩盖安装成功
+    try { await loadProfile() } catch { /* ignore */ }
+    try { await searchRegistry(query) } catch { /* ignore */ }
+    setInstalling(null)
   }
 
   const handleUninstall = async (name: string) => {
@@ -155,13 +160,14 @@ export function ApplicationsPage() {
     try {
       await uninstallSkill(name)
       toast.success(`已卸载技能 ${name}`)
-      await loadProfile()
-      await searchRegistry(query)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
-    } finally {
       setUninstalling(null)
+      return
     }
+    try { await loadProfile() } catch { /* ignore */ }
+    try { await searchRegistry(query) } catch { /* ignore */ }
+    setUninstalling(null)
   }
 
   const patchAssistant = (id: string, patch: (m: Extract<AppMsg, { role: 'assistant' }>) => void) => {
@@ -224,7 +230,7 @@ export function ApplicationsPage() {
           onResult: (r) => {
             if (r.sessionId) sessionRef.current = r.sessionId
             patchAssistant(assistantId, (m) => {
-              if (r.answer) m.content = r.answer
+              if (r.answer && !m.content) m.content = r.answer
             })
           },
           onError: (msg) => {

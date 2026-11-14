@@ -161,6 +161,7 @@ export function BuildPage() {
   const messagesRef = useRef<ChatMsg[]>([])
   const chatEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
 
   // 草稿工作区
   const [draftId, setDraftId] = useState<string | null>(null)
@@ -218,7 +219,7 @@ export function BuildPage() {
     }
   }, [draftId, draftName, draftMd, draftFiles, datasetYaml])
 
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(() => () => { mountedRef.current = false; abortRef.current?.abort() }, [])
 
   const refreshDraft = useCallback(async (id: string) => {
     if (!id) return
@@ -303,7 +304,8 @@ export function BuildPage() {
           // 自动保存（dataset 沿用当前内容）
           void (async () => {
             try {
-              const saved = await saveDraft({ name: draftNameRef.current.trim() || name, markdown, files, dataset: datasetYamlRef.current.trim() || null })
+              const payload = { name: draftNameRef.current.trim() || name, markdown, files, dataset: datasetYamlRef.current.trim() || null }
+              const saved = draftIdRef.current ? await updateDraft(draftIdRef.current, payload) : await saveDraft(payload)
               setDraftId(saved.id)
               setDraftName(draftNameRef.current.trim() || name)
               toast.success(`草稿已自动保存（${saved.id}）`)
@@ -393,24 +395,28 @@ export function BuildPage() {
                 return { ...m, phases }
               }),
             onToken: (text2) => patch((m) => ({ ...m, content: m.content + text2 })),
-            onCard: (card) =>
-              patch((m) => {
-                const { note } = handleCard(card)
-                return { ...m, cards: [...m.cards, { kind: 'card', card, note }] }
-              }),
+            onCard: (card) => {
+              const { note } = handleCard(card)
+              patch((m) => ({ ...m, cards: [...m.cards, { kind: 'card', card, note }] }))
+            },
             onResult: (answer) => patch((m) => (answer && !m.content ? { ...m, content: answer } : m)),
-            onError: (err) =>
+            onError: (err) => {
+              if (/abort/i.test(String(err))) return
               patch((m) => ({
                 ...m,
                 cards: [...m.cards, { kind: 'card', card: { type: 'hint', payload: { text: `⚠ ${err}` } } }],
-              })),
+              }))
+            },
           },
         })
       } catch (e) {
-        patch((m) => ({
-          ...m,
-          cards: [...m.cards, { kind: 'card', card: { type: 'hint', payload: { text: `⚠ ${e instanceof Error ? e.message : e}` } } }],
-        }))
+        const msg = e instanceof Error ? e.message : String(e)
+        if (!/abort/i.test(msg)) {
+          patch((m) => ({
+            ...m,
+            cards: [...m.cards, { kind: 'card', card: { type: 'hint', payload: { text: `⚠ ${msg}` } } }],
+          }))
+        }
       } finally {
         patch((m) => ({ ...m, streaming: false }))
         setSending(false)
@@ -440,14 +446,17 @@ export function BuildPage() {
       const { run_id } = await startGateRun(id, gateLevel)
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
+        if (!mountedRef.current) return
         const run = await getRun('gate', run_id)
+        if (!mountedRef.current) return
         setGateRun(run)
         if (run.status !== 'running') break
+        if (i === 149) toast.warning('检查扫描超时（5 分钟），请稍后在历史记录中查看结果')
       }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e))
     } finally {
-      setBusy(null)
+      if (mountedRef.current) setBusy(null)
     }
   }, [ensureSaved, gateLevel])
 
@@ -460,14 +469,17 @@ export function BuildPage() {
       const { run_id } = await startEvalRun(id)
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
+        if (!mountedRef.current) return
         const run = await getRun('eval', run_id)
+        if (!mountedRef.current) return
         setEvalRun(run)
         if (run.status !== 'running') break
+        if (i === 149) toast.warning('测评超时（5 分钟），请稍后在历史记录中查看结果')
       }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e))
     } finally {
-      setBusy(null)
+      if (mountedRef.current) setBusy(null)
     }
   }, [ensureSaved])
 
@@ -480,14 +492,17 @@ export function BuildPage() {
       const { job_id } = await startEvolve(id, 3)
       for (let i = 0; i < 450; i++) {
         await new Promise((r) => setTimeout(r, 2000))
+        if (!mountedRef.current) return
         const job = await getEvolveJob(job_id)
+        if (!mountedRef.current) return
         setEvolveJob(job)
         if (job.status !== 'running') break
+        if (i === 449) toast.warning('进化超时（15 分钟），请稍后查看结果')
       }
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e))
     } finally {
-      setBusy(null)
+      if (mountedRef.current) setBusy(null)
     }
   }, [ensureSaved])
 
@@ -515,7 +530,8 @@ export function BuildPage() {
 
   const openLibrary = useCallback(() => {
     setLibraryOpen(true)
-    if (library === null && !libraryErr) {
+    if (library === null || libraryErr) {
+      setLibraryErr('')
       void listLibrarySkills()
         .then((skills) => setLibrary(skills))
         .catch((e) => setLibraryErr(String(e instanceof Error ? e.message : e)))
@@ -588,7 +604,7 @@ export function BuildPage() {
                         </div>
                       )}
                       {m.cards.map((c, i) => (
-                        <ChatCardView key={i} entry={c} dark={dark} copyText={copyText} onAdopt={adopt} />
+                        <ChatCardView key={i} entry={c} dark={dark} baseMd={draftMd} busy={busy === 'adopt'} copyText={copyText} onAdopt={adopt} />
                       ))}
                       {m.streaming && <span className="inline-block size-2 animate-pulse rounded-full bg-primary" />}
                     </div>
@@ -1014,12 +1030,14 @@ function EvolveView({
 }
 
 function ChatCardView({
-  entry, dark, onAdopt, copyText,
+  entry, dark, onAdopt, copyText, baseMd, busy,
 }: {
   entry: ChatCard
   dark: boolean
   onAdopt?: () => void
   copyText: (t: string) => void
+  baseMd?: string
+  busy?: boolean
 }) {
   const [adopted, setAdopted] = useState(false)
   const { card, note } = entry
@@ -1054,6 +1072,8 @@ function ChatCardView({
         <EvolveView
           job={job}
           dark={dark}
+          baseMd={baseMd}
+          busy={busy}
           copyText={copyText}
           adopted={adopted}
           onAdopt={onAdopt ? () => { setAdopted(true); onAdopt() } : undefined}
