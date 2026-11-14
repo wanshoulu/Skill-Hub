@@ -16,7 +16,7 @@ services:
     container_name: gate-service
     restart: unless-stopped
     environment:
-      GATE_TOKEN: ${GATE_TOKEN:?required}
+      GATE_TOKEN: ${GATE_TOKEN:-} # 留空 = 关闭鉴权（auth.js 未配置即放行）
       LLM_BASE_URL: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
       LLM_API_KEY: ${LLM_API_KEY:?required}
       LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
@@ -60,7 +60,7 @@ services:
     container_name: skill-app-agent
     restart: unless-stopped
     environment:
-      GATE_TOKEN: ${GATE_TOKEN:?required}
+      GATE_TOKEN: ${GATE_TOKEN:-} # 留空 = 关闭鉴权（auth.js 未配置即放行）
       LLM_BASE_URL: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
       LLM_API_KEY: ${LLM_API_KEY:?required}
       LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
