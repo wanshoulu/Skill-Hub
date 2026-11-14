@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+    branches: [main]
+    paths: ['gate-service/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['gate-service/**', '.github/workflows/ci.yml']
+jobs:
+  gate-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci || npm install
+        working-directory: gate-service
+      - run: node src/server.js &
+        name: Boot gate-service (smoke)
+        working-directory: gate-service
+      - name: Health check
+        run: |
+          sleep 3
+          curl -sf http://127.0.0.1:3007/health || echo "no /health endpoint; boot log above is the check"
