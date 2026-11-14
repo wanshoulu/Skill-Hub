@@ -310,7 +310,21 @@ async function forwardCreate(message, history, emit, mcpBindings = []) {
   }
 
   const ctrl = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 120_000);
+  // 首包超时：agent 初始化 + 建连上限；数据空闲超时：首包后 90s 无任何数据判定卡死
+  let abortReason = null;
+  let idleTimer = null;
+  let firstChunkSeen = false;
+  const timeout = setTimeout(() => {
+    abortReason = 'skill-build-agent 响应超时（120s）';
+    ctrl.abort();
+  }, 120_000);
+  const armIdle = () => {
+    if (idleTimer) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      abortReason = 'skill-build-agent 数据流中断（90s 无输出）';
+      ctrl.abort();
+    }, 90_000);
+  };
   const res = await fetch(`${BUILD_AGENT_URL}/api/skill-build-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -321,27 +335,46 @@ async function forwardCreate(message, history, emit, mcpBindings = []) {
     signal: ctrl.signal,
   }).catch((e) => {
     clearTimeout(timeout);
-    if (e.name === 'AbortError') throw new Error('skill-build-agent 响应超时（120s）');
+    if (idleTimer) clearTimeout(idleTimer);
+    if (e.name === 'AbortError') throw new Error(abortReason || 'skill-build-agent 连接中断');
     throw e;
   });
-  if (!res.ok || !res.body) { clearTimeout(timeout); throw new Error(`skill-build-agent HTTP ${res.status}`); }
+  if (!res.ok || !res.body) {
+    clearTimeout(timeout);
+    if (idleTimer) clearTimeout(idleTimer);
+    throw new Error(`skill-build-agent HTTP ${res.status}`);
+  }
 
   const decoder = new TextDecoder();
   let buf = '';
   let answer = '';
-  for await (const chunk of res.body) {
-    clearTimeout(timeout); // 首个 chunk 到达后改用 idle 定时器
-    buf += decoder.decode(chunk, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
-      const block = buf.slice(0, idx);
-      buf = buf.slice(idx + 2);
-      const ev = parseSseBlock(block);
-      if (!ev) continue;
-      if (ev.event === 'result') answer = ev.data?.answer || answer;
-      if (ev.event === 'done') continue; // done 由 server.js 统一发，避免双 done
-      emit(ev.event, ev.data); // phase/token/result/done/error/hb 原样透传
+  try {
+    for await (const chunk of res.body) {
+      if (!firstChunkSeen) {
+        firstChunkSeen = true;
+        clearTimeout(timeout); // 首个 chunk 到达后改用 idle 定时器
+        armIdle();
+      } else {
+        armIdle(); // 每个 chunk 到达都喂活 idle 定时器（hb/token 均有效）
+      }
+      buf += decoder.decode(chunk, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const ev = parseSseBlock(block);
+        if (!ev) continue;
+        if (ev.event === 'result') answer = ev.data?.answer || answer;
+        if (ev.event === 'done') continue; // done 由 server.js 统一发，避免双 done
+        emit(ev.event, ev.data); // phase/token/result/done/error/hb 原样透传
+      }
     }
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(abortReason || 'skill-build-agent 数据流中断');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+    if (idleTimer) clearTimeout(idleTimer);
   }
   return answer;
 }
