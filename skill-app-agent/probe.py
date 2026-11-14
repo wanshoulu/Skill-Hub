@@ -39,14 +39,14 @@ async def one_chat(idx, query, timeout_s=100):
     t0 = time.monotonic()
     answer = ''
 
-    def emit(ev):
+    async def emit(ev):
         s = str(ev)[:160]
         print(f'   [{idx}] ev {s}')
 
     token = current_emitter.set(emit)
     stream = None
     try:
-        agent = manager.get_agent()
+        agent = await manager.get_agent()
         stream = agent.stream({'query': query}, session=session)
         async def drain():
             nonlocal answer
@@ -77,7 +77,7 @@ async def one_chat(idx, query, timeout_s=100):
 
 async def main():
     print('== locks before ==', len(lock_snapshot()))
-    agent = manager.get_agent()
+    agent = await manager.get_agent()
     await inspect_rails(agent)
     print('== locks after agent init ==', len(lock_snapshot()))
 

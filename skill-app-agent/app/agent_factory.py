@@ -102,6 +102,8 @@ async def _ensure_skills_copy(ws_dir: Path, skills_root: Path) -> None:
     try:
         if node.is_symlink() or node.is_file():
             node.unlink()
+        if node.is_dir():
+            shutil.rmtree(node, ignore_errors=True)
         await asyncio.to_thread(shutil.copytree, skills_root, node, dirs_exist_ok=True)
     except OSError as e:
         logger.warning("skills 副本复制失败（%s）: %s", node, e)
@@ -146,6 +148,7 @@ class AgentManager:
         self._ws_dir: Path | None = None
         self._rail = AppEventRail()
         self._card = None
+        self._lock = asyncio.Lock()
 
     @property
     def card(self):
@@ -166,17 +169,22 @@ class AgentManager:
         fp = _skills_fingerprint()
         if self._agent is not None and fp == self._fingerprint:
             return self._agent
-        logger.info("rebuilding deep agent (skills fingerprint=%s)", fp[:16])
-        # 每个指纹独立 workspace 子目录：openjiuwen 的 memory/workspace 文件锁
-        # 会被已初始化 agent 持久持有，路径重叠会导致新 agent 初始化死锁
-        ws_dir = Path(storage_config.workspace_root) / f"run-{fp[:8]}"
-        self._agent = await self._build(ws_dir)
-        old_ws = self._ws_dir
-        self._ws_dir = ws_dir
-        self._fingerprint = fp
-        if old_ws is not None and old_ws != ws_dir:
-            self._cleanup_stale_workspaces({ws_dir.name, old_ws.name})
-        return self._agent
+        async with self._lock:
+            # 在锁内重新检查，防止在等待锁时有其他任务已构建
+            fp = _skills_fingerprint()
+            if self._agent is not None and fp == self._fingerprint:
+                return self._agent
+            logger.info("rebuilding deep agent (skills fingerprint=%s)", fp[:16])
+            # 每个指纹独立 workspace 子目录：openjiuwen 的 memory/workspace 文件锁
+            # 会被已初始化 agent 持久持有，路径重叠会导致新 agent 初始化死锁
+            ws_dir = Path(storage_config.workspace_root) / f"run-{fp[:8]}"
+            self._agent = await self._build(ws_dir)
+            old_ws = self._ws_dir
+            self._ws_dir = ws_dir
+            self._fingerprint = fp
+            if old_ws is not None and old_ws != ws_dir:
+                self._cleanup_stale_workspaces({ws_dir.name, old_ws.name})
+            return self._agent
 
     def _cleanup_stale_workspaces(self, keep_names: set[str]) -> None:
         """best-effort 清理更早指纹遗留的 workspace（保留当前与上一个，避免打断在途对话）。"""

@@ -104,14 +104,17 @@ export default defineConfig({
       '/app-api': {
         target: 'http://localhost:8310',
         changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/app-api/, ''),
       },
       '/gate-api': {
         target: 'http://localhost:3002',
         changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/gate-api/, ''),
       },
       '/build-api': {
         target: 'http://localhost:8300',
         changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/build-api/, ''),
       },
     },
   },

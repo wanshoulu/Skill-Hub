@@ -87,8 +87,7 @@ function safeDraftPath(base, rel) {
   return p;
 }
 
-async function writeDraft(id, { name, markdown, files = [], dataset = null }) {
-  const dir = draftDir(id);
+async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = null }) {
   fs.mkdirSync(path.join(dir, 'files'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'SKILL.md'), markdown, 'utf8');
   for (const f of files) {
@@ -103,9 +102,18 @@ async function writeDraft(id, { name, markdown, files = [], dataset = null }) {
     fs.writeFileSync(path.join(dir, 'evals', 'dataset.yaml'), dataset, 'utf8');
   }
   const meta = { id, name, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset) };
+  saveJson(path.relative(DATA_DIR, path.join(dir, 'meta.json')).replace(/\\/g, '/'), meta);
+  return meta;
+}
+
+async function writeDraft(id, body) {
+  const meta = await writeDraftTo(draftDir(id), id, body);
+  // 恢复 created_at（writeDraftTo 不读旧 meta）
   const old = readJson(`drafts/${id}/meta.json`);
-  if (old) meta.created_at = old.created_at;
-  saveJson(`drafts/${id}/meta.json`, meta);
+  if (old?.created_at && meta.created_at !== old.created_at) {
+    meta.created_at = old.created_at;
+    saveJson(`drafts/${id}/meta.json`, meta);
+  }
   return meta;
 }
 
@@ -145,7 +153,9 @@ async function route(req, res) {
 
   // ── 统一对话入口（SSE）──
   if (method === 'POST' && p === '/v1/agent/chat') {
-    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
     const sse = sseWriter(res);
     try {
       await agentChat(
@@ -161,7 +171,9 @@ async function route(req, res) {
 
   // ── 草稿 ──
   if (p === '/v1/drafts' && method === 'POST') {
-    const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
     if (!body.name || !body.markdown) return fail(res, 400, '需要 name 与 markdown');
     const id = newDraftId();
     const meta = await writeDraft(id, body);
@@ -184,13 +196,27 @@ async function route(req, res) {
 
     if (method === 'GET' && !draftM[2]) return ok(res, { ...draftView(meta), markdown: readDraftMarkdown(id) });
     if (method === 'PUT' && !draftM[2]) {
-      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+      catch { return fail(res, 400, '请求体不是有效的 JSON'); }
       const dir = draftDir(id);
-      // 旧 SKILL.md 暂存内存（目录将整体重建）
-      const skillPath = path.join(dir, 'SKILL.md');
-      const backupBuf = fs.existsSync(skillPath) ? fs.readFileSync(skillPath) : null;
+      // 先写入临时目录，成功后替换（防止 writeDraft 失败导致数据丢失）
+      const tmpDir = path.join(path.dirname(dir), `${path.basename(dir)}.tmp.${Date.now()}`);
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const backupBuf = fs.existsSync(path.join(dir, 'SKILL.md')) ? fs.readFileSync(path.join(dir, 'SKILL.md')) : null;
+      try {
+        writeDraftTo(tmpDir, id, body);
+      } catch (e) {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+        throw e;
+      }
+      // 保留旧 history 目录
+      const oldHist = path.join(dir, 'history');
+      if (fs.existsSync(oldHist)) {
+        fsp.cp(oldHist, path.join(tmpDir, 'history'), { recursive: true }).catch(() => {});
+      }
       await fsp.rm(dir, { recursive: true, force: true });
-      await writeDraft(id, body);
+      fs.renameSync(tmpDir, dir);
       if (backupBuf) {
         const histDir = path.join(dir, 'history');
         fs.mkdirSync(histDir, { recursive: true });
@@ -226,7 +252,9 @@ async function route(req, res) {
       level = fields.level || 'release';
       ns = fields.ns || null;
     } else {
-      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+      catch { return fail(res, 400, '请求体不是有效的 JSON'); }
       if (!body.draft_id) return fail(res, 400, '需要 draft_id 或 multipart 上传 zip');
       source = { type: 'draft', id: body.draft_id };
       level = body.level || 'release';
@@ -266,7 +294,9 @@ async function route(req, res) {
       maxRounds = Number(fields.max_rounds || 1);
       ns = fields.ns || null;
     } else {
-      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+      catch { return fail(res, 400, '请求体不是有效的 JSON'); }
       if (!body.draft_id) return fail(res, 400, '需要 draft_id 或 multipart 上传 zip');
       source = { type: 'draft', id: body.draft_id };
       maxRounds = Number(body.max_rounds || 3);

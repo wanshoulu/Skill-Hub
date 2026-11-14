@@ -297,13 +297,13 @@ async function forwardCreate(message, history, emit) {
     if (e.name === 'AbortError') throw new Error('skill-build-agent 响应超时（120s）');
     throw e;
   });
-  clearTimeout(timeout);
-  if (!res.ok || !res.body) throw new Error(`skill-build-agent HTTP ${res.status}`);
+  if (!res.ok || !res.body) { clearTimeout(timeout); throw new Error(`skill-build-agent HTTP ${res.status}`); }
 
   const decoder = new TextDecoder();
   let buf = '';
   let answer = '';
   for await (const chunk of res.body) {
+    clearTimeout(timeout); // 首个 chunk 到达后改用 idle 定时器
     buf += decoder.decode(chunk, { stream: true });
     let idx;
     while ((idx = buf.indexOf('\n\n')) >= 0) {
@@ -378,6 +378,7 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
       let lastPhase = '';
       while (job.status === 'running') {
         const cur = readRun('evolve', job.id);
+        if (!cur) { await new Promise((r) => setTimeout(r, 800)); continue; }
         Object.assign(job, cur);
         if (cur?.progress?.phase && cur.progress.phase !== lastPhase) {
           lastPhase = cur.progress.phase;

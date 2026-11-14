@@ -105,27 +105,32 @@ def list_installed() -> list[dict]:
     return out
 
 
+_install_locks: dict[str, asyncio.Lock] = {}
+
+
 async def install(namespace: str, slug: str, version: str | None = None) -> dict:
     """resolve → download → 安全解压到 SKILLS_DIR/<slug>/ → 重建指纹。"""
     if not _NAME_RE.match(slug):
         raise ValueError(f"slug 不合法: {slug}")
-    resolved = await registry_client.resolve_skill(namespace, slug, version)
-    dest = skills_root() / slug
-    if dest.exists():
-        raise FileExistsError(f"技能已安装: {slug}")
-    skills_root().mkdir(parents=True, exist_ok=True)
-    content = await registry_client.download_skill_zip(resolved["downloadUrl"])
-    with zipfile.ZipFile(io.BytesIO(content)) as zf:
-        count = _extract_into(zf, dest)
-    if not (dest / "SKILL.md").is_file():
-        shutil.rmtree(dest, ignore_errors=True)
-        raise ValueError(f"技能包缺少 SKILL.md: {slug}（共 {count} 个文件）")
-    logger.info("installed skill %s/%s v%s fingerprint=%s files=%d",
-                namespace, slug, resolved["version"], resolved["fingerprint"][:16], count)
-    return {
-        "name": slug, "namespace": namespace, "version": resolved["version"],
-        "fingerprint": resolved["fingerprint"], "files": count,
-    }
+    lock = _install_locks.setdefault(slug, asyncio.Lock())
+    async with lock:
+        resolved = await registry_client.resolve_skill(namespace, slug, version)
+        dest = skills_root() / slug
+        if dest.exists():
+            raise FileExistsError(f"技能已安装: {slug}")
+        skills_root().mkdir(parents=True, exist_ok=True)
+        content = await registry_client.download_skill_zip(resolved["downloadUrl"])
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            count = _extract_into(zf, dest)
+        if not (dest / "SKILL.md").is_file():
+            shutil.rmtree(dest, ignore_errors=True)
+            raise ValueError(f"技能包缺少 SKILL.md: {slug}（共 {count} 个文件）")
+        logger.info("installed skill %s/%s v%s fingerprint=%s files=%d",
+                    namespace, slug, resolved["version"], resolved["fingerprint"][:16], count)
+        return {
+            "name": slug, "namespace": namespace, "version": resolved["version"],
+            "fingerprint": resolved["fingerprint"], "files": count,
+        }
 
 
 def uninstall(name: str) -> None:

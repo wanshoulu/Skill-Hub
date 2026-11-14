@@ -1,5 +1,5 @@
 // auth.js — Bearer GATE_TOKEN 鉴权
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 const TOKEN = process.env.GATE_TOKEN || '';
 

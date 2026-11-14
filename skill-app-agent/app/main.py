@@ -199,6 +199,8 @@ def _chunk_text(payload: Any) -> str:
 def _build_query(message: str, history: list) -> str:
     parts = ["【对话历史（仅供理解上下文）】"]
     for h in history[-20:]:
+        if not isinstance(h, dict):
+            continue
         role = str(h.get("role", ""))
         content = str(h.get("content", ""))[:2000]
         if role in ("user", "assistant") and content:
@@ -311,18 +313,20 @@ async def chat(request: Request, _: None = Depends(require_auth)) -> StreamingRe
         except Exception as e:
             logger.error("chat stream exception: %s", e, exc_info=True)
             yield sse_encode("error", {"error": f"Agent 运行失败：{str(e)[:300]}"})
+            return
         finally:
             if cv_cwd is not None:
                 workspace_cwd.reset(cv_cwd)
             current_emitter.reset(cv_token)
             if pump_task is not None and not pump_task.done():
                 pump_task.cancel()
+                await asyncio.gather(pump_task, return_exceptions=True)
             if agent_stream is not None:
                 try:
                     await agent_stream.aclose()
                 except Exception:
                     pass
-            yield sse_encode("done", {})
+        yield sse_encode("done", {})
 
     return StreamingResponse(
         event_stream(),

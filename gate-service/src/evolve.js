@@ -102,8 +102,9 @@ export async function runEvolve({ files, dataset, maxRounds = 3 }, onProgress = 
 
   // frontmatter 原样保留 + 正文
   const fmMatch = skillMd.text.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
+  const hasFm = !!fmMatch;
   const frontmatter = fmMatch ? fmMatch[0] : '---\nname: unknown\n---\n';
-  const origName = (frontmatter.match(/name:\s*(.+)/) || [, ''])[1].trim();
+  const origName = String(matter(skillMd.text).data?.name || '').trim();
   const desc = String(matter(skillMd.text).data?.description || '').trim();
 
   onProgress?.({ phase: 'evolve-base', detail: 'base eval：dataset 全量' });
@@ -127,7 +128,7 @@ export async function runEvolve({ files, dataset, maxRounds = 3 }, onProgress = 
 
   // 迭代：每轮以上轮候选为新基线；采纳标准始终锚定原始判定（原失败全修复 ∧ 零回归 ∧ name 冻结）
   let curFm = frontmatter;
-  let curBody = skillMd.text.slice(frontmatter.length);
+  let curBody = hasFm ? skillMd.text.slice(frontmatter.length) : skillMd.text;
   let curDesc = desc;
   let pending = [...baseVerdict.entries()].filter(([, v]) => !v.pass);
   let conclusion = 'rejected';
@@ -154,7 +155,7 @@ export async function runEvolve({ files, dataset, maxRounds = 3 }, onProgress = 
 
     // candidate frontmatter 校验：name 冻结 + description 可解析
     const candFm = candidateMd.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n/);
-    const candName = candFm ? ((candFm[0].match(/name:\s*(.+)/) || [, ''])[1].trim()) : '';
+    const candName = String(matter(candidateMd).data?.name || '').trim();
     round.name_preserved = candName === origName;
     const candDesc = String(matter(candidateMd).data?.description || '').trim();
     if (!candDesc) {

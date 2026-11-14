@@ -138,7 +138,7 @@ function parseSseBlock(block: string): { event: string; data: unknown } | null {
   let data = ''
   for (const line of block.split('\n')) {
     if (line.startsWith('event:')) event = line.slice(6).trim()
-    else if (line.startsWith('data:')) data += line.slice(5).trim()
+    else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim()
   }
   if (!data) return null
   try {
