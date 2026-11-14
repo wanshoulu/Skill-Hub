@@ -105,17 +105,10 @@ export function ApplicationsPage() {
     }
   }, [])
 
-  // 首次加载 + 令牌变化后重载
+  // 首次加载；GATE_TOKEN 仅作可选请求头（服务端未配置鉴权时无需令牌）
   useEffect(() => {
-    if (!token) {
-      setProfile(null)
-      setProfileErr('未配置访问令牌：请点击右上角「配置令牌」')
-      setRegistry(null)
-      setRegistryErr('')
-      return
-    }
     void loadProfile()
-  }, [token, loadProfile])
+  }, [loadProfile])
 
   const searchRegistry = useCallback(async (q: string) => {
     setRegistryLoading(true)
@@ -134,10 +127,9 @@ export function ApplicationsPage() {
 
   // 打开页面即拉取注册中心热门列表
   useEffect(() => {
-    if (!token) return
     void searchRegistry('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [])
 
   const handleInstall = async (s: RegistrySkill) => {
     setInstalling(`${s.namespace}/${s.slug}`)
@@ -183,11 +175,6 @@ export function ApplicationsPage() {
   }
 
   const send = async (text: string) => {
-    if (!token) {
-      toast.error('请先配置访问令牌')
-      setTokenOpen(true)
-      return
-    }
     const message = text.trim()
     if (!message || sending) return
     const assistantId = newId()
@@ -265,7 +252,7 @@ export function ApplicationsPage() {
   }
 
   const installedNames = new Set((profile?.skills ?? []).map((s) => s.name))
-  const canChat = Boolean(token) && !sending
+  const canChat = !sending
 
   return (
     <div className="flex h-full min-h-[70vh] flex-col gap-4">
@@ -548,7 +535,7 @@ export function ApplicationsPage() {
           </DialogHeader>
           <div className="space-y-3 text-sm">
             <p className="text-xs text-muted-foreground">
-              技能应用与技能构建共用同一网关令牌（GATE_TOKEN），保存后立即生效。
+              技能应用与技能构建共用同一网关令牌（GATE_TOKEN）。服务端未启用鉴权时可留空。
             </p>
             <Input
               type="password"

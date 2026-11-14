@@ -2,7 +2,6 @@ import { Bot, Check, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchAgentProfile, installSkill } from '@/api/appClient'
-import { getGateToken } from '@/api/gateClient'
 import { toast } from '@/shared/lib/toast'
 import { isPortableSkillVersion } from './install-command'
 
@@ -20,9 +19,9 @@ export function InstallForAgentButton({ namespace, slug, version, disabled = fal
   const { t } = useTranslation()
   const [state, setState] = useState<'idle' | 'installing' | 'done'>('idle')
 
-  // 已配置令牌时预查 Agent 已安装技能，命中则直接呈现已安装态（失败静默回落 idle）
+  // 预查 Agent 已安装技能，命中则直接呈现已安装态（失败静默回落 idle）
   useEffect(() => {
-    if (!getGateToken() || !isPortableSkillVersion(version)) return
+    if (!isPortableSkillVersion(version)) return
     setState('idle')
     let alive = true
     fetchAgentProfile()
