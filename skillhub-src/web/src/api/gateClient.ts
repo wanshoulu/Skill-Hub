@@ -369,7 +369,7 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
               const h = req.handlers
               switch (ev.event) {
                 case 'phase':
-                  h.onPhase?.(ev.data as AgentPhaseEvent)
+                  if (ev.data && typeof ev.data === 'object') h.onPhase?.(ev.data as AgentPhaseEvent)
                   break
                 case 'token':
                   h.onToken?.(String((ev.data as { text?: string })?.text ?? ''))
@@ -378,7 +378,7 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
                   h.onSkillLoad?.(String((ev.data as { skill?: string })?.skill ?? ''))
                   break
                 case 'tool':
-                  h.onTool?.(ev.data as AgentToolEvent)
+                  if (ev.data && typeof ev.data === 'object') h.onTool?.(ev.data as AgentToolEvent)
                   break
                 case 'card':
                   h.onCard?.(ev.data as AgentCard)

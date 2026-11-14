@@ -151,6 +151,7 @@ function usePrefersDark(): boolean {
 
 let msgSeq = 0
 const nextMsgId = () => `m${Date.now()}_${msgSeq++}`
+let timelineSeq = 0
 
 // ── 页面 ─────────────────────────────────────────────────────────
 
@@ -316,6 +317,7 @@ export function BuildPage() {
           setDraftName((prev) => prev || name)
           setDraftMd(markdown)
           if (files.length) setDraftFiles(files)
+          setSelectedFilePath(null)
           // 自动保存（dataset 沿用当前内容）
           void (async () => {
             try {
@@ -408,7 +410,8 @@ export function BuildPage() {
           handlers: {
             onPhase: (phase) => {
               patch((m) => {
-                const phases = [...m.phases.filter((ph) => ph.name !== phase.name), phase]
+                const idx = m.phases.findIndex((ph) => ph.name === phase.name)
+                const phases = idx >= 0 ? [...m.phases.slice(0, idx), phase, ...m.phases.slice(idx + 1)] : [...m.phases, phase]
                 return { ...m, phases }
               })
               setTimelineSteps((prev) => {
@@ -424,10 +427,10 @@ export function BuildPage() {
             },
             onToken: (text2) => patch((m) => ({ ...m, content: m.content + text2 })),
             onSkillLoad: (skill) => {
-              setTimelineSteps((prev) => [...prev, { id: `skill_load-${skill}-${Date.now()}`, type: 'skill_load', skill, timestamp: Date.now() }])
+              setTimelineSteps((prev) => [...prev, { id: `skill_load-${skill}-${timelineSeq++}`, type: 'skill_load', skill, timestamp: Date.now() }])
             },
             onTool: (e) => {
-              setTimelineSteps((prev) => [...prev, { id: `tool-${e.tool}-${Date.now()}`, type: 'tool', tool: e.tool, skill: e.skill, script: e.script, status: e.status, timestamp: Date.now() }])
+              setTimelineSteps((prev) => [...prev, { id: `tool-${e.tool}-${timelineSeq++}`, type: 'tool', tool: e.tool, skill: e.skill, script: e.script, status: e.status, timestamp: Date.now() }])
             },
             onCard: (card) => {
               const { note } = handleCard(card)
@@ -454,6 +457,7 @@ export function BuildPage() {
       } finally {
         patch((m) => ({ ...m, streaming: false }))
         setSending(false)
+        setTimelineCollapsed(true)
         abortRef.current = null
       }
     },
@@ -753,7 +757,10 @@ export function BuildPage() {
                     files={draftFiles}
                     selectedPath={selectedFilePath}
                     onSelect={setSelectedFilePath}
-                    onRemove={(path) => setDraftFiles((prev) => prev.filter((f) => f.path !== path))}
+                    onRemove={(path) => {
+                      setDraftFiles((prev) => prev.filter((f) => f.path !== path))
+                      setSelectedFilePath((cur) => (cur === path ? null : cur))
+                    }}
                   />
                 </div>
                 <div className="flex min-h-0 flex-1 flex-col">
@@ -934,8 +941,8 @@ function ProgressTimeline({
   }, [steps, collapsed])
   if (steps.length === 0) return null
 
-  // 折叠态：单行摘要
-  if (collapsed || !active) {
+  // 折叠态：单行摘要（完成后自动折叠，但仍可手动展开）
+  if (collapsed) {
     const doneCount = steps.filter((s) => s.type === 'phase' && s.status === 'done').length
     const runningStep = steps.find((s): s is Extract<TimelineStep, { type: 'phase' }> => s.type === 'phase' && s.status === 'running')
     return (
