@@ -3,6 +3,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import AdmZip from 'adm-zip';
 
+// 归档安全限制（参考 Cisco Skill Scanner 阈值）
+const MAX_FILES = 500;
+const MAX_UNCOMPRESSED_SIZE = 50 * 1024 * 1024; // 50 MB
+const ZIP_BOMB_RATIO = 100; // 压缩比超过 100:1 判定为 zip-bomb
+
 export function sha256(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
@@ -18,8 +23,24 @@ export function unzip(buf) {
   const zip = new AdmZip(buf);
   const warnings = [];
   const raw = [];
-  for (const entry of zip.getEntries()) {
+
+  // 归档安全检查
+  const entries = zip.getEntries();
+  if (entries.length > MAX_FILES) {
+    throw new Error(`zip 内文件数 ${entries.length} 超过上限 ${MAX_FILES}（可能为 zip-bomb 或恶意技能包）`);
+  }
+
+  let totalUncompressed = 0;
+  let totalCompressed = 0;
+  for (const entry of entries) {
     if (entry.isDirectory) continue;
+    totalUncompressed += entry.header.size;
+    totalCompressed += entry.header.compressedSize;
+    // 符号链接检测（Unix symlink 位）
+    if (entry.header.attr & 0xA000 && (entry.header.attr & 0xF000) === 0xA000) {
+      warnings.push(`已跳过符号链接：${entry.entryName}`);
+      continue;
+    }
     let name = entry.entryName.replace(/\\/g, '/');
     // zip-slip 防护：拒绝路径穿越与绝对路径
     if (name.startsWith('/') || name.split('/').some((seg) => seg === '..')) {
@@ -29,6 +50,17 @@ export function unzip(buf) {
     name = name.replace(/^\.\//, '');
     raw.push({ name, content: entry.getData() });
   }
+
+  // 总大小限制
+  if (totalUncompressed > MAX_UNCOMPRESSED_SIZE) {
+    throw new Error(`zip 解压后总大小 ${Math.round(totalUncompressed / 1024 / 1024)}MB 超过上限 ${MAX_UNCOMPRESSED_SIZE / 1024 / 1024}MB`);
+  }
+
+  // zip-bomb 检测：压缩比超过阈值
+  if (totalCompressed > 0 && totalUncompressed / totalCompressed > ZIP_BOMB_RATIO) {
+    throw new Error(`zip 压缩比 ${Math.round(totalUncompressed / totalCompressed)}:1 超过阈值 ${ZIP_BOMB_RATIO}:1（疑似 zip-bomb 攻击）`);
+  }
+
   if (!raw.length) throw new Error('zip 内没有文件');
 
   // 嵌套一层目录的兼容：唯一顶层目录且其下有 SKILL.md → 剥前缀
