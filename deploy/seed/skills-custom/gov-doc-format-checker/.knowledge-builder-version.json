@@ -1,0 +1,19 @@
+{
+  "version_ref": "skill-version:gov-doc-format-checker:9f3038d8bf131e4f7a938a7d0de047f08c9d7613fca9c08ffc1cfd1f08184aa3",
+  "project": "gov-doc-format-checker",
+  "content_digest": "ad5dc8391b99f7d913ac8edb2fedfd8aca1d6f76af939cc429049c3373ca71e1",
+  "file_count": 1,
+  "total_bytes": 5314,
+  "source": {
+    "kind": "INLINE",
+    "skill_id": "29fe502d-4368-4a48-b041-175545c81c69"
+  },
+  "created_at": "2026-09-12T22:55:42.454Z",
+  "manifest": [
+    {
+      "path": "SKILL.md",
+      "size": 5314,
+      "digest": "sha256:b9b4bed8c41377dcae708844d87de12d461141f209538f35374b1abddf47ce36"
+    }
+  ]
+}

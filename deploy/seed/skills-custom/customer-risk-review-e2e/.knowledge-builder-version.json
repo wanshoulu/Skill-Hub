@@ -1,0 +1,19 @@
+{
+  "version_ref": "skill-version:customer-risk-review-e2e:711dee6957387770c56a6be45ae102b7f28cc3639b6dcf044598c7a610bf7eb0",
+  "project": "customer-risk-review-e2e",
+  "content_digest": "sha256:711dee6957387770c56a6be45ae102b7f28cc3639b6dcf044598c7a610bf7eb0",
+  "file_count": 1,
+  "total_bytes": 2854,
+  "source": {
+    "kind": "INLINE",
+    "skill_id": "e2e-synth-1793072103069"
+  },
+  "created_at": "2026-10-27T03:35:03.150Z",
+  "manifest": [
+    {
+      "path": "SKILL.md",
+      "size": 2854,
+      "digest": "sha256:06c004a7d3aac8afb007b9c9dd39d4ab57ca3b60adc3d46f76da59918ebab29e"
+    }
+  ]
+}

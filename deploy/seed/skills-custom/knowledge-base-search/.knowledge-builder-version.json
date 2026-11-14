@@ -1,0 +1,19 @@
+{
+  "version_ref": "skill-version:knowledge-base-search:aca0adc118de4b3a3c556cce9f06e30badaa54118d07a40984b79a92ab62e2a8",
+  "project": "knowledge-base-search",
+  "content_digest": "sha256:aca0adc118de4b3a3c556cce9f06e30badaa54118d07a40984b79a92ab62e2a8",
+  "file_count": 1,
+  "total_bytes": 3771,
+  "source": {
+    "kind": "INLINE",
+    "skill_id": "4a12f850-35d8-4403-a721-35622b8c077f"
+  },
+  "created_at": "2026-09-13T06:05:22.559Z",
+  "manifest": [
+    {
+      "path": "SKILL.md",
+      "size": 3771,
+      "digest": "sha256:61b9528f137941f2575665c1932cf1b184f9b74f963e38c84d6f42fae80a18cc"
+    }
+  ]
+}

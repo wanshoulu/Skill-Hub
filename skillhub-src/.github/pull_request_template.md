@@ -1,0 +1,30 @@
+## Summary
+
+- What changed?
+- Why is this needed?
+
+## Validation
+
+- [ ] Applicable checks selected from `.trellis/spec/testing/index.md`; exclusions explained
+- [ ] Backend tests passed when backend behavior changed
+- [ ] Frontend typecheck/build passed when frontend files changed
+- [ ] OpenAPI SDK regenerated or checked when API contracts changed
+- [ ] Smoke test run when relevant
+
+Commands run:
+
+```bash
+# paste commands here
+```
+
+## Risk
+
+- User-facing impact:
+- Deployment or migration impact:
+- Rollback approach:
+
+## Notes
+
+- Related issue:
+- Follow-up work:
+- Docs or operator runbooks updated when behavior changed:

@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+# PyPI 直连在部署环境仅 ~13KB/s，走清华镜像（实测 ~1.8MB/s）
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r /app/requirements.txt
+
+COPY app /app/app
+
+# skills/workspace 由 compose 卷挂载，仅保证目录存在
+RUN mkdir -p /data/skills /data/workspace
+
+EXPOSE 8310
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=5 --start-period=15s \
+  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8310/v1/healthz', timeout=4).status==200 else 1)"
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8310", "--log-level", "info"]

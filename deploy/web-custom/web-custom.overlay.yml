@@ -1,0 +1,9 @@
+# 技能构建定制 web 镜像 overlay — 与主 compose（compose.release.yml）配合使用
+# 用法：docker compose -f compose.release.yml -f web-custom.overlay.yml up -d web
+services:
+  web:
+    image: skillhub-web-custom:v0.2.26.2
+    environment:
+      GATE_API_UPSTREAM: http://gate-service:3002
+      BUILD_AGENT_UPSTREAM: http://skill-build-agent:8300
+      APP_API_UPSTREAM: http://skill-app-agent:8310

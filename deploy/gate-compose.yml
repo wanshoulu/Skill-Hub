@@ -1,0 +1,89 @@
+# 技能构建平台（gate-service）部署 — 方案 docs/gate-design.md §9.2
+# 独立于 skillhub 主 compose（compose.release.yml），通过外部网络与注册中心互通。
+#
+# 服务器目录布局（~/skillhub/）：
+#   gate-compose.yml  .env  gate-service/  seed/
+#
+# 部署：
+#   docker compose -f gate-compose.yml up -d --build
+# G2 起再启用对话创建 agent：
+#   docker compose -f gate-compose.yml --profile agent up -d --build
+
+services:
+  gate:
+    build: ./gate-service
+    image: gate-service:0.1.0
+    container_name: gate-service
+    restart: unless-stopped
+    environment:
+      GATE_TOKEN: ${GATE_TOKEN:?required}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
+      LLM_API_KEY: ${LLM_API_KEY:?required}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
+      BUILD_AGENT_URL: http://skill-build-agent:8300
+    volumes:
+      - gate_data:/data
+      - ./seed:/seed:ro
+    networks: [skillhub]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/v1/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # 对话创建 agent（复用 OntoMind skill-build-agent，源码零改动）— G2 里程碑启用
+  skill-build-agent:
+    profiles: [agent]
+    build:
+      context: ./skill-build-agent/python
+      dockerfile: Dockerfile
+    image: skill-build-agent:0.1.0
+    container_name: skill-build-agent
+    restart: unless-stopped
+    environment:
+      LLM_API_BASE: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
+      LLM_API_KEY: ${LLM_API_KEY:?required}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
+      SKILLS_CUSTOM_DIR: /data/skills/custom
+      SKILLS_OFFICIAL_DIR: /data/skills/official
+    volumes:
+      - gate_data:/data
+    networks: [skillhub]
+    mem_limit: 512m
+
+  # 技能应用试运行 agent（OpenJiuWen DeepAgent）— G9 里程碑
+  skill-app-agent:
+    build: ./skill-app-agent
+    image: skill-app-agent:0.1.0
+    container_name: skill-app-agent
+    restart: unless-stopped
+    environment:
+      GATE_TOKEN: ${GATE_TOKEN:?required}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
+      LLM_API_KEY: ${LLM_API_KEY:?required}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
+      SKILLS_DIR: /data/skills
+      WORKSPACE_DIR: /data/workspace
+      REGISTRY_BASE_URL: http://server:8080
+      AUTO_INSTALL_SKILLS: ${AUTO_INSTALL_SKILLS:-personal/stock-lookup}
+    volumes:
+      - skill_app_data:/data
+    networks: [skillhub]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8310/v1/healthz', timeout=4).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+networks:
+  skillhub:
+    name: ${SKILLHUB_NETWORK:-skillhub_default}
+    external: true
+
+volumes:
+  gate_data:
+  skill_app_data:

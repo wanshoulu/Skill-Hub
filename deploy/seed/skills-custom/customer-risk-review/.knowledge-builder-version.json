@@ -1,0 +1,39 @@
+{
+  "version_ref": "skill-version:customer-risk-review:d6413cf2f615c02f8b0797f2352c30eca1dc22e01f7db438fa45351a6387ef1b",
+  "project": "customer-risk-review",
+  "content_digest": "sha256:d6413cf2f615c02f8b0797f2352c30eca1dc22e01f7db438fa45351a6387ef1b",
+  "file_count": 5,
+  "total_bytes": 6820,
+  "source": {
+    "kind": "INLINE",
+    "skill_id": "94cfaf78-4167-48eb-9708-3904af3f9b67"
+  },
+  "created_at": "2026-10-28T01:51:11.490Z",
+  "manifest": [
+    {
+      "path": "assets/report-template.md",
+      "size": 724,
+      "digest": "sha256:35938d96d8c23d8ada3f81e314ce40c967392ed35d3a4faaa5fc41e090302975"
+    },
+    {
+      "path": "references/business-rules.md",
+      "size": 927,
+      "digest": "sha256:335aa4e9b20c84feb98933b3a700ac51501560e6c87f0b4e6532b619ba08d3ab"
+    },
+    {
+      "path": "references/io-example.md",
+      "size": 909,
+      "digest": "sha256:a5ddde694eabeb7134b572fd7ab87c98c1c3c13d3b164d4a08ddc4b33990e89d"
+    },
+    {
+      "path": "scripts/risk_calculator.py",
+      "size": 1481,
+      "digest": "sha256:f44c32767ce484a8d6e5b2d7dd62ebcc04d27aca9bfedb5abbc5ce5a55c32ef8"
+    },
+    {
+      "path": "SKILL.md",
+      "size": 2779,
+      "digest": "sha256:8d587bc204ed0eb1e57b77ecac2647d590312eb187f494b54f9bd502c4ace311"
+    }
+  ]
+}

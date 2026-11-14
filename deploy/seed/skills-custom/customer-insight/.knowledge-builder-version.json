@@ -1,0 +1,19 @@
+{
+  "version_ref": "skill-version:customer-insight:d8019385f875d1e6fb9680ff478f6b85aad206d732e907a6444452741abc1621",
+  "project": "customer-insight",
+  "content_digest": "sha256:d8019385f875d1e6fb9680ff478f6b85aad206d732e907a6444452741abc1621",
+  "file_count": 1,
+  "total_bytes": 2658,
+  "source": {
+    "kind": "INLINE",
+    "skill_id": "a64bfd4f-c5d4-487b-863b-5957dd9f5b1e"
+  },
+  "created_at": "2026-10-27T23:09:31.762Z",
+  "manifest": [
+    {
+      "path": "SKILL.md",
+      "size": 2658,
+      "digest": "sha256:72b1cccf6cdabdcf751eecad4a94db9930dcafe72e0bad1c360ff160e57c9e21"
+    }
+  ]
+}
