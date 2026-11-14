@@ -1,0 +1,112 @@
+[
+  {
+    "id": "preset.filesystem",
+    "name": "Filesystem",
+    "description": "文件系统读写操作，支持目录浏览、文件读写、搜索",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+    "env": {},
+    "category": "文件操作",
+    "keywords": ["文件", "file", "filesystem", "读写", "目录", "folder", "读取文件", "写入文件", "搜索文件"]
+  },
+  {
+    "id": "preset.fetch",
+    "name": "Fetch",
+    "description": "网页抓取与 URL 内容获取，支持 HTML 转 Markdown",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-fetch"],
+    "env": {},
+    "category": "网络请求",
+    "keywords": ["网页", "fetch", "url", "抓取", "爬虫", "web", "http", "请求", "爬取", "下载内容"]
+  },
+  {
+    "id": "preset.github",
+    "name": "GitHub",
+    "description": "GitHub 仓库操作：搜索仓库、读取文件、管理 Issue 和 PR",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "" },
+    "category": "开发工具",
+    "keywords": ["github", "仓库", "repository", "代码", "issue", "pr", "pull request", "commit", "分支", "branch"]
+  },
+  {
+    "id": "preset.sqlite",
+    "name": "SQLite",
+    "description": "SQLite 数据库查询与操作",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/tmp/data.db"],
+    "env": {},
+    "category": "数据库",
+    "keywords": ["sqlite", "数据库", "database", "sql", "查询", "query", "表", "table", "db"]
+  },
+  {
+    "id": "preset.brave-search",
+    "name": "Brave Search",
+    "description": "Brave 搜索引擎，支持 Web 搜索和本地搜索",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": { "BRAVE_API_KEY": "" },
+    "category": "搜索",
+    "keywords": ["搜索", "search", "brave", "查找", "检索", "google", "bing", "web search"]
+  },
+  {
+    "id": "preset.puppeteer",
+    "name": "Puppeteer",
+    "description": "浏览器自动化：页面截图、PDF 生成、表单填写、爬取动态网页",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+    "env": {},
+    "category": "浏览器自动化",
+    "keywords": ["浏览器", "browser", "puppeteer", "截图", "screenshot", "自动化", "automation", "网页操作", "pdf"]
+  },
+  {
+    "id": "preset.memory",
+    "name": "Memory",
+    "description": "基于知识图谱的持久化记忆存储",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "env": {},
+    "category": "存储",
+    "keywords": ["记忆", "memory", "知识图谱", "knowledge graph", "存储", "store", "记住", "持久化"]
+  },
+  {
+    "id": "preset.postgres",
+    "name": "PostgreSQL",
+    "description": "PostgreSQL 数据库查询与操作",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres"],
+    "env": { "POSTGRES_CONNECTION_STRING": "" },
+    "category": "数据库",
+    "keywords": ["postgres", "postgresql", "数据库", "database", "sql", "查询", "query", "db"]
+  },
+  {
+    "id": "preset.time",
+    "name": "Time",
+    "description": "获取当前时间和时区转换",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-time"],
+    "env": {},
+    "category": "工具",
+    "keywords": ["时间", "time", "时区", "timezone", "时钟", "clock", "日期", "date"]
+  },
+  {
+    "id": "preset.sequential-thinking",
+    "name": "Sequential Thinking",
+    "description": "结构化逐步推理与思维链",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "env": {},
+    "category": "推理",
+    "keywords": ["推理", "reasoning", "思考", "thinking", "思维链", "chain of thought", "分析", "逻辑"]
+  }
+]

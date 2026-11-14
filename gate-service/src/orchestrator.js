@@ -8,7 +8,7 @@ import { llm } from './llm.js';
 import { unzip, sha256, packDraftDir, findSkillMd } from './pack.js';
 import matter from 'gray-matter';
 import fs from 'node:fs';
-import { getDraftBoundTools } from './mcp.js';
+import { getDraftBoundTools, recommendFromCatalog } from './mcp.js';
 import path from 'node:path';
 
 const BUILD_AGENT_URL = (process.env.BUILD_AGENT_URL || 'http://skill-build-agent:8300').replace(/\/+$/, '');
@@ -291,15 +291,32 @@ async function forwardCreate(message, history, emit, mcpBindings = []) {
   let mcpContext = '';
   if (mcpBindings.length) {
     try {
-      const boundTools = await getDraftBoundTools(mcpBindings);
-      if (boundTools.length) {
-        const toolDescriptions = boundTools.map(s =>
-          `### ${s.server_name}\n` +
-          s.tools.map(t =>
-            `- **${t.name}**: ${t.description || '无描述'}\n` +
-            `  参数: ${JSON.stringify(t.inputSchema)}`
-          ).join('\n')
-        ).join('\n\n');
+      // 拆分预置绑定与已注册服务器绑定
+      const presetBindings = mcpBindings.filter(b => b._preset);
+      const serverBindings = mcpBindings.filter(b => !b._preset);
+
+      const toolSections = [];
+
+      // 已注册服务器：探测真实工具
+      if (serverBindings.length) {
+        const boundTools = await getDraftBoundTools(serverBindings);
+        for (const s of boundTools) {
+          toolSections.push(`### ${s.server_name}\n` +
+            s.tools.map(t => `- **${t.name}**: ${t.description || '无描述'}\n  参数: ${JSON.stringify(t.inputSchema)}`).join('\n'));
+        }
+      }
+
+      // 预置目录：直接使用目录描述（无需探测）
+      for (const b of presetBindings) {
+        const p = b._preset;
+        toolSections.push(`### ${p.name}\n${p.description || ''}\n传输: ${p.transport}\n` +
+          (p.command ? `命令: ${p.command} ${(p.args || []).join(' ')}\n` : '') +
+          (p.url ? `URL: ${p.url}\n` : '') +
+          `类别: ${p.category || '通用'}`);
+      }
+
+      if (toolSections.length) {
+        const toolDescriptions = toolSections.join('\n\n');
         mcpContext = `\n\n<available_mcp_tools>\n${toolDescriptions}\n</available_mcp_tools>\n` +
           `\n创建技能时可引用上述 MCP 工具。在 SKILL.md 中使用如下格式声明工具依赖：\n` +
           '```yaml\nmcp_tools:\n  - server: <server_name>\n    tool: <tool_name>\n```\n';
@@ -395,7 +412,7 @@ function parseSseBlock(block) {
 }
 
 // 统一对话入口。emit(event, data) 由 server.js 的 SSE writer 提供
-export async function agentChat({ message, history = [], draft_id = null, mode = null }, emit) {
+export async function agentChat({ message, history = [], draft_id = null, mode = null, mcp_confirmed = null }, emit) {
   // 1) 意图路由
   let intent = mode && INTENT_LABELS[mode] ? mode : null;
   if (!intent) {
@@ -412,6 +429,28 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
       const meta = readJson(`drafts/${draft_id}/meta.json`);
       mcpBindings = meta?.mcp_bindings || [];
     }
+
+    // MCP 市场推荐：用户未携带确认结果时，自动匹配预置目录
+    if (!mcp_confirmed) {
+      const suggestions = recommendFromCatalog(message);
+      if (suggestions.length > 0) {
+        emit('card', { type: 'mcp_suggest', payload: { suggestions } });
+        // 直接用候选继续创建流程（前端确认后可覆盖）
+        const suggestedBindings = suggestions.map(s => ({
+          server_id: s.id,
+          server_name: s.name,
+          tool_names: [],
+          _preset: s, // 预置信息（前端用于一键注册）
+        }));
+        mcpBindings = [...mcpBindings, ...suggestedBindings];
+      }
+    } else {
+      // 用户已从前端确认选择 → 合并到绑定
+      if (Array.isArray(mcp_confirmed) && mcp_confirmed.length > 0) {
+        mcpBindings = [...mcpBindings, ...mcp_confirmed];
+      }
+    }
+
     const answer = await forwardCreate(message, history, emit, mcpBindings);
     // 提取产出（若有）→ card 供前端预览保存
     const art = extractArtifacts(answer);

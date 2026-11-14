@@ -13,7 +13,7 @@ import { beginGate, executeGate, beginEval, executeEval, startEvolve, adoptJob, 
 import { llm } from './llm.js';
 import {
   listMcpServers, addMcpServer, updateMcpServer, removeMcpServer,
-  probeMcpServer, probeAllServers, invalidateProbe,
+  probeMcpServer, probeAllServers, invalidateProbe, getCatalog,
 } from './mcp.js';
 
 const PORT = Number(process.env.PORT || 3002);
@@ -170,7 +170,7 @@ async function route(req, res) {
     const sse = sseWriter(res);
     try {
       await agentChat(
-        { message: String(body.message || ''), history: Array.isArray(body.history) ? body.history.slice(-20) : [], draft_id: body.draft_id || null, mode: body.mode || null },
+        { message: String(body.message || ''), history: Array.isArray(body.history) ? body.history.slice(-20) : [], draft_id: body.draft_id || null, mode: body.mode || null, mcp_confirmed: body.mcp_confirmed || null },
         sse.send,
       );
     } catch (e) {
@@ -178,6 +178,11 @@ async function route(req, res) {
     }
     sse.send('done', {});
     return sse.close();
+  }
+
+  // ── MCP 预置市场目录 ────────────────────────────────────────────
+  if (p === '/v1/mcp/catalog' && method === 'GET') {
+    return ok(res, getCatalog());
   }
 
   // ── MCP 服务器注册表 ──────────────────────────────────────────────

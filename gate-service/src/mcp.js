@@ -1,9 +1,44 @@
-// mcp.js — MCP 服务器注册表 + 工具探测客户端
+// mcp.js — MCP 服务器注册表 + 工具探测客户端 + 预置市场目录
 // 支持 stdio / sse / streamable-http 三种传输
 import { saveJson, readJson } from './store.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const REGISTRY_PATH = 'mcp_servers.json';
 const STATUS_TTL_MS = 5 * 60 * 1000; // 探测结果缓存 5 分钟
+
+// ── 预置市场目录 ─────────────────────────────────────────────────
+
+let _catalogCache = null;
+
+export function getCatalog() {
+  if (_catalogCache) return _catalogCache;
+  try {
+    const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'mcp-catalog.json');
+    _catalogCache = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    _catalogCache = [];
+  }
+  return _catalogCache;
+}
+
+// 根据用户消息匹配预置 MCP 工具（关键词命中法，无需 LLM）
+export function recommendFromCatalog(message, maxResults = 5) {
+  const catalog = getCatalog();
+  if (!catalog.length) return [];
+  const msg = message.toLowerCase();
+  const scored = [];
+  for (const item of catalog) {
+    let hits = 0;
+    for (const kw of item.keywords || []) {
+      if (msg.includes(kw.toLowerCase())) hits++;
+    }
+    if (hits > 0) scored.push({ ...item, score: hits });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, maxResults).map(({ score, ...rest }) => rest);
+}
 
 // ── 注册表 CRUD ──────────────────────────────────────────────────
 

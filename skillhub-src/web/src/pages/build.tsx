@@ -26,7 +26,7 @@ import {
   startGateRun, streamAgentChat, updateDraft,
   addMcpServer, listMcpServers, probeAllMcpTools, removeMcpServer, updateMcpServer,
   type AgentCard, type AgentPhaseEvent, type DraftMcpBinding, type EvolveCompare, type EvolveJob,
-  type GateDraftFile, type GateRun, type LibrarySkill, type McpServerConfig, type McpServerStatus, type McpToolInfo,
+  type GateDraftFile, type GateRun, type LibrarySkill, type McpCatalogItem, type McpServerConfig, type McpServerStatus, type McpToolInfo,
 } from '@/api/gateClient'
 
 // 进化卡片 payload → EvolveJob（对话卡片与 REST 轮询共用）
@@ -1586,6 +1586,10 @@ function ChatCardView({
       </div>
     )
   }
+  if (card.type === 'mcp_suggest') {
+    const suggestions = (p.suggestions as McpCatalogItem[]) || []
+    return <McpSuggestCard suggestions={suggestions} />
+  }
   if (card.type === 'adopt_done') {
     return (
       <div className="rounded-md border p-2 text-sm">
@@ -1600,6 +1604,43 @@ function ChatCardView({
 }
 
 // ── MCP 子组件 ──────────────────────────────────────────────────
+
+// MCP 市场推荐卡片（信息展示，推荐已自动应用）
+function McpSuggestCard({ suggestions }: { suggestions: McpCatalogItem[] }) {
+  const [expanded, setExpanded] = useState(true)
+  return (
+    <div className="rounded-md border border-blue-300 bg-blue-50 p-2 text-sm dark:border-blue-800 dark:bg-blue-950">
+      <button
+        className="flex w-full items-center gap-1 font-medium text-blue-700 dark:text-blue-300"
+        onClick={() => setExpanded(v => !v)}
+      >
+        {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+        <Sparkles className="h-3.5 w-3.5" />
+        MCP 市场推荐 · {suggestions.length} 个匹配工具（已自动应用）
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-1.5">
+          {suggestions.map(s => (
+            <div key={s.id} className="rounded border border-blue-200 bg-white p-1.5 dark:border-blue-900 dark:bg-blue-950/50">
+              <div className="flex items-center gap-1.5">
+                <span className="font-medium">{s.name}</span>
+                <span className="rounded bg-blue-100 px-1 text-[10px] text-blue-700 dark:bg-blue-900 dark:text-blue-200">{s.category}</span>
+                <span className="rounded bg-gray-100 px-1 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">{s.transport}</span>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">{s.description}</p>
+              <div className="mt-0.5 flex flex-wrap gap-0.5">
+                {s.keywords.slice(0, 5).map(kw => (
+                  <span key={kw} className="text-[10px] text-gray-400">#{kw}</span>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="text-xs text-muted-foreground">可在右侧 MCP 标签页查看与调整绑定</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // MCP 工具树（服务器作为目录，工具作为叶子）
 function McpToolTree({

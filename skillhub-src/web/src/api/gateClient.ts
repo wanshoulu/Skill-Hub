@@ -314,6 +314,26 @@ export async function probeMcpServer(id: string): Promise<McpServerStatus> {
   return gateGet<McpServerStatus>(`/mcp/servers/${encodeURIComponent(id)}/tools`)
 }
 
+// ── MCP 预置市场目录 ─────────────────────────────────────────────
+
+export interface McpCatalogItem {
+  id: string
+  name: string
+  description: string
+  transport: 'stdio' | 'sse' | 'streamable-http'
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  category: string
+  keywords: string[]
+}
+
+export async function getMcpCatalog(): Promise<McpCatalogItem[]> {
+  return gateGet<McpCatalogItem[]>('/mcp/catalog')
+}
+
 // ── 技能库（skill-build-agent，G2 链路）──────────────────────────
 
 export async function listLibrarySkills(): Promise<LibrarySkill[]> {
@@ -332,6 +352,7 @@ export type AgentCardType =
   | 'eval_report'
   | 'evolve_report'
   | 'adopt_done'
+  | 'mcp_suggest'
 
 export interface AgentCard {
   type: AgentCardType
@@ -366,6 +387,7 @@ export interface AgentChatRequest {
   history: Array<{ role: 'user' | 'assistant'; content: string }>
   draftId?: string | null
   mode?: string | null
+  mcpConfirmed?: Array<{ server_id: string; server_name: string; tool_names: string[] }> | null
   signal?: AbortSignal
   handlers: AgentChatHandlers
 }
@@ -401,6 +423,7 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
       history: req.history.slice(-20),
       draft_id: req.draftId || null,
       ...(req.mode ? { mode: req.mode } : {}),
+      ...(req.mcpConfirmed ? { mcp_confirmed: req.mcpConfirmed } : {}),
     }),
     signal: req.signal,
   })
