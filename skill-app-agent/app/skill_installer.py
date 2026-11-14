@@ -1,5 +1,6 @@
 """技能安装器 — 注册中心 zip → SKILLS_DIR/<name>/，安全解压 + 卸载白名单"""
 
+import asyncio
 import io
 import logging
 import re
