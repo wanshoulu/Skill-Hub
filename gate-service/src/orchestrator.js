@@ -285,11 +285,19 @@ export function extractArtifacts(answer) {
 // create：转发 skill-build-agent（事件原样透传），done 后提取产出 card
 async function forwardCreate(message, history, emit) {
   emit('phase', { name: '技能创建', status: 'running', detail: '转发 skill-build-agent' });
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 120_000);
   const res = await fetch(`${BUILD_AGENT_URL}/api/skill-build-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, history }),
+    signal: ctrl.signal,
+  }).catch((e) => {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('skill-build-agent 响应超时（120s）');
+    throw e;
   });
+  clearTimeout(timeout);
   if (!res.ok || !res.body) throw new Error(`skill-build-agent HTTP ${res.status}`);
 
   const decoder = new TextDecoder();

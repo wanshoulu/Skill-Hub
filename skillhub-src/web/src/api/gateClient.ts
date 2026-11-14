@@ -391,7 +391,7 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
   } finally {
     if (stallTimer) clearTimeout(stallTimer)
     try {
-      reader.releaseLock()
+      await reader.cancel()
     } catch {
       // 流已关闭
     }

@@ -89,7 +89,7 @@ def _skills_fingerprint() -> str:
     return h.hexdigest()
 
 
-def _ensure_skills_copy(ws_dir: Path, skills_root: Path) -> None:
+async def _ensure_skills_copy(ws_dir: Path, skills_root: Path) -> None:
     """把技能库复制为 workspace 的 skills 节点（per-fp 独立副本）。
 
     SkillUseRail 扫描 workspace.get_node_path("skills")，而非 create_deep_agent 的
@@ -102,7 +102,7 @@ def _ensure_skills_copy(ws_dir: Path, skills_root: Path) -> None:
     try:
         if node.is_symlink() or node.is_file():
             node.unlink()
-        shutil.copytree(skills_root, node, dirs_exist_ok=True)
+        await asyncio.to_thread(shutil.copytree, skills_root, node, dirs_exist_ok=True)
     except OSError as e:
         logger.warning("skills 副本复制失败（%s）: %s", node, e)
 
@@ -162,7 +162,7 @@ class AgentManager:
         self._agent = None
         self._fingerprint = None
 
-    def get_agent(self):
+    async def get_agent(self):
         fp = _skills_fingerprint()
         if self._agent is not None and fp == self._fingerprint:
             return self._agent
@@ -170,7 +170,7 @@ class AgentManager:
         # 每个指纹独立 workspace 子目录：openjiuwen 的 memory/workspace 文件锁
         # 会被已初始化 agent 持久持有，路径重叠会导致新 agent 初始化死锁
         ws_dir = Path(storage_config.workspace_root) / f"run-{fp[:8]}"
-        self._agent = self._build(ws_dir)
+        self._agent = await self._build(ws_dir)
         old_ws = self._ws_dir
         self._ws_dir = ws_dir
         self._fingerprint = fp
@@ -189,7 +189,7 @@ class AgentManager:
         except Exception as e:  # noqa: BLE001
             logger.warning("workspace 清理失败: %s", e)
 
-    def _build(self, ws_dir: Path):
+    async def _build(self, ws_dir: Path):
         model = Model(
             ModelClientConfig(
                 client_provider="openai",
@@ -216,7 +216,7 @@ class AgentManager:
         skills_root.mkdir(parents=True, exist_ok=True)
         ws_dir.mkdir(parents=True, exist_ok=True)
         workspace = Workspace(root_path=str(ws_dir), language="cn")
-        _ensure_skills_copy(ws_dir, skills_root)
+        await _ensure_skills_copy(ws_dir, skills_root)
         _ensure_sysop_sandbox(card, skills_root)
 
         # 自定义工具 + 内置 skill_tool（技能加载，不放行会被 tiered_policy 拒绝）

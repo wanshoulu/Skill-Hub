@@ -1,6 +1,8 @@
 # 依赖与构建产物
 node_modules/
 workbench/**/node_modules/
+__pycache__/
+*.pyc
 
 # 部署密钥（含管理员密码、cookie 签名密钥）
 deploy/.env.release

@@ -12,6 +12,7 @@ API 契约（/v1，Bearer GATE_TOKEN，healthz 免鉴权）：
 """
 
 import asyncio
+import hmac
 import logging
 import time
 import uuid
@@ -85,7 +86,7 @@ async def require_auth(request: Request) -> None:
     if not server_config.gate_token:
         raise HTTPException(status_code=503, detail="GATE_TOKEN 未配置，服务不可用")
     auth = request.headers.get("Authorization", "")
-    if auth != f"Bearer {server_config.gate_token}":
+    if not hmac.compare_digest(auth, f"Bearer {server_config.gate_token}"):
         raise HTTPException(status_code=401, detail="鉴权失败：请在页面右上角设置访问令牌")
 
 
@@ -107,7 +108,7 @@ async def healthz():
 
 @app.get("/v1/agent")
 async def get_agent_profile(_: None = Depends(require_auth)):
-    manager.get_agent()  # 确保已构建
+    await manager.get_agent()  # 确保已构建
     return {
         "agent": {
             "id": "skill-app-agent",
@@ -239,7 +240,7 @@ async def chat(request: Request, _: None = Depends(require_auth)) -> StreamingRe
         agent_stream = None
         try:
             yield sse_encode("phase", {"name": "初始化", "status": "running", "detail": "加载 Agent 与已安装技能"})
-            agent = manager.get_agent()
+            agent = await manager.get_agent()
             cv_cwd = workspace_cwd.set(str(manager.workspace_dir))
             yield sse_encode("phase", {
                 "name": "初始化", "status": "done",

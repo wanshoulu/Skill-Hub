@@ -105,6 +105,14 @@ export default defineConfig({
         target: 'http://localhost:8310',
         changeOrigin: true,
       },
+      '/gate-api': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      '/build-api': {
+        target: 'http://localhost:8300',
+        changeOrigin: true,
+      },
     },
   },
 })

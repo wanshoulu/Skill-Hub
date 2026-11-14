@@ -23,6 +23,7 @@ export function InstallForAgentButton({ namespace, slug, version, disabled = fal
   // 已配置令牌时预查 Agent 已安装技能，命中则直接呈现已安装态（失败静默回落 idle）
   useEffect(() => {
     if (!getGateToken() || !isPortableSkillVersion(version)) return
+    setState('idle')
     let alive = true
     fetchAgentProfile()
       .then((p) => {
@@ -43,7 +44,7 @@ export function InstallForAgentButton({ namespace, slug, version, disabled = fal
       toast.success(t('skillDetail.installForAgent.success', { version: installed?.version || version }))
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      if (message.includes('409')) {
+      if (err instanceof Error && (err as any).status === 409) {
         setState('done')
         toast.success(t('skillDetail.installForAgent.conflict'))
       } else {

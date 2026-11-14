@@ -83,6 +83,11 @@ export function ApplicationsPage() {
     messagesRef.current = messages
   }, [messages])
 
+  // 组件卸载时中止进行中的 SSE 流，防止悬空状态更新
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -219,7 +224,7 @@ export function ApplicationsPage() {
           onResult: (r) => {
             if (r.sessionId) sessionRef.current = r.sessionId
             patchAssistant(assistantId, (m) => {
-              if (r.answer && !m.content) m.content = r.answer
+              if (r.answer) m.content = r.answer
             })
           },
           onError: (msg) => {

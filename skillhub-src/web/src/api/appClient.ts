@@ -41,8 +41,8 @@ function authHeaders(extra?: Record<string, string>): HeadersInit {
 }
 
 async function unwrap<T>(res: Response): Promise<T> {
-  if (res.status === 401) throw new Error('鉴权失败（401）：请在「技能构建」页右上角检查访问令牌')
-  if (res.status === 503) throw new Error('技能应用服务不可用（503）：服务端未配置令牌或未启动')
+  if (res.status === 401) throw Object.assign(new Error('鉴权失败（401）：请在「技能构建」页右上角检查访问令牌'), { status: 401 })
+  if (res.status === 503) throw Object.assign(new Error('技能应用服务不可用（503）：服务端未配置令牌或未启动'), { status: 503 })
   if (!res.ok) {
     let detail = ''
     try {
@@ -51,7 +51,7 @@ async function unwrap<T>(res: Response): Promise<T> {
     } catch {
       // 忽略响应体解析失败
     }
-    throw new Error(`请求失败（HTTP ${res.status}）${detail}`)
+    throw Object.assign(new Error(`请求失败（HTTP ${res.status}）${detail}`), { status: res.status })
   }
   return (await res.json()) as T
 }
@@ -233,7 +233,7 @@ export async function streamAppChat(req: AppChatRequest): Promise<void> {
   } finally {
     if (stallTimer) clearTimeout(stallTimer)
     try {
-      reader.releaseLock()
+      await reader.cancel()
     } catch {
       // 流已关闭
     }

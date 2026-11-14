@@ -438,7 +438,7 @@ export function BuildPage() {
     setGateRun(null)
     try {
       const { run_id } = await startGateRun(id, gateLevel)
-      for (;;) {
+      for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         const run = await getRun('gate', run_id)
         setGateRun(run)
@@ -458,7 +458,7 @@ export function BuildPage() {
     setEvalRun(null)
     try {
       const { run_id } = await startEvalRun(id)
-      for (;;) {
+      for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         const run = await getRun('eval', run_id)
         setEvalRun(run)
@@ -478,7 +478,7 @@ export function BuildPage() {
     setEvolveJob(null)
     try {
       const { job_id } = await startEvolve(id, 3)
-      for (;;) {
+      for (let i = 0; i < 450; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         const job = await getEvolveJob(job_id)
         setEvolveJob(job)

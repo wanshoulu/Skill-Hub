@@ -204,8 +204,8 @@ export async function runEvolve({ files, dataset, maxRounds = 3 }, onProgress = 
       message = `第 ${roundNo} 轮进化无进展（${round.summary}${round.name_preserved ? '' : '；name 被改动'}），已拒绝。`;
       break;
     }
-    // 以候选为新基线，继续修复剩余失败
-    pending = [...baseVerdict.entries()].filter(([id, v]) => !v.pass && still.includes(id));
+    // 以候选为新基线，继续修复剩余失败 + 回归用例（反馈给 LLM 针对性修复）
+    pending = [...baseVerdict.entries()].filter(([id, v]) => (!v.pass && still.includes(id)) || regressed.includes(id));
     curFm = candFm || curFm;
     curBody = candidateMd.slice(candFm ? candFm[0].length : 0);
     curDesc = candDesc;
