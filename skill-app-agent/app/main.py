@@ -82,9 +82,9 @@ app.add_middleware(
 
 
 async def require_auth(request: Request) -> None:
-    """Bearer 鉴权；未配置 GATE_TOKEN 视为服务不可用（语义同 gate-service）。"""
+    """Bearer 鉴权；未配置 GATE_TOKEN 时关闭鉴权（语义同 gate-service）。"""
     if not server_config.gate_token:
-        raise HTTPException(status_code=503, detail="GATE_TOKEN 未配置，服务不可用")
+        return  # 鉴权关闭：未配置 GATE_TOKEN 即放行
     auth = request.headers.get("Authorization", "")
     if not hmac.compare_digest(auth, f"Bearer {server_config.gate_token}"):
         raise HTTPException(status_code=401, detail="鉴权失败：请在页面右上角设置访问令牌")
