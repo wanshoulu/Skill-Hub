@@ -378,11 +378,6 @@ export function BuildPage() {
     async (raw: string, forcedMode: string | null) => {
       const text = raw.trim()
       if (!text || sending) return
-      if (!token) {
-        setTokenOpen(true)
-        toast.error('请先配置 GATE_TOKEN')
-        return
-      }
       const controller = new AbortController()
       abortRef.current = controller
       setSending(true)
@@ -475,7 +470,7 @@ export function BuildPage() {
         abortRef.current = null
       }
     },
-    [sending, token, handleCard],
+    [sending, handleCard],
   )
 
   // ── 运行：检查 / 测评 / 进化 ──────────────────────────────────
@@ -665,7 +660,7 @@ export function BuildPage() {
     void navigator.clipboard.writeText(text).then(() => toast.success('已复制'))
   }, [])
 
-  const canChat = Boolean(token)
+  const canChat = !sending
 
   return (
     <div className="flex h-full min-h-[70vh] flex-col gap-4">
@@ -785,7 +780,7 @@ export function BuildPage() {
                     void send(input, mode)
                   }
                 }}
-                placeholder={canChat ? '描述需求或指令…（Enter 发送，Shift+Enter 换行）' : '请先配置网关令牌'}
+                placeholder={sending ? 'Agent 运行中…' : '描述需求或指令…（Enter 发送，Shift+Enter 换行）'}
                 rows={2}
                 className="min-h-0 resize-none"
               />
@@ -1015,7 +1010,7 @@ export function BuildPage() {
             <DialogTitle>配置网关令牌（GATE_TOKEN）</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            技能构建网关的访问令牌（gate-service 部署时生成）。仅保存在本机 localStorage。
+            技能构建网关的访问令牌（gate-service 部署时生成）。仅保存在本机 localStorage。服务端未启用鉴权时可留空。
           </p>
           <Input
             value={tokenDraft}
