@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import {
   Bot, BookOpen, Check, ChevronDown, ChevronUp, Copy, Download, FileCode, FileText,
-  Folder, FolderOpen, Gauge, KeyRound, Library, Loader2, RefreshCw,
+  Folder, FolderOpen, Gauge, KeyRound, Library, Loader2, Plus, RefreshCw,
   Save, Send, ShieldCheck, Sparkles, Wrench, X,
 } from 'lucide-react'
 import { toast } from '@/shared/lib/toast'
@@ -24,8 +24,9 @@ import {
   adoptEvolveJob, getDraft, getDraftZip, getEvolveJob, getGateToken, getRun,
   listLibrarySkills, listRuns, saveDraft, setGateToken, startEvalRun, startEvolve,
   startGateRun, streamAgentChat, updateDraft,
-  type AgentCard, type AgentPhaseEvent, type EvolveCompare, type EvolveJob,
-  type GateDraftFile, type GateRun, type LibrarySkill,
+  addMcpServer, listMcpServers, probeAllMcpTools, removeMcpServer, updateMcpServer,
+  type AgentCard, type AgentPhaseEvent, type DraftMcpBinding, type EvolveCompare, type EvolveJob,
+  type GateDraftFile, type GateRun, type LibrarySkill, type McpServerConfig, type McpServerStatus, type McpToolInfo,
 } from '@/api/gateClient'
 
 // 进化卡片 payload → EvolveJob（对话卡片与 REST 轮询共用）
@@ -202,6 +203,16 @@ export function BuildPage() {
   const [library, setLibrary] = useState<LibrarySkill[] | null>(null)
   const [libraryErr, setLibraryErr] = useState('')
 
+  // MCP 服务器与工具
+  const [mcpServers, setMcpServers] = useState<McpServerConfig[] | null>(null)
+  const [mcpTools, setMcpTools] = useState<McpServerStatus[] | null>(null)
+  const [mcpErr, setMcpErr] = useState('')
+  const [mcpServerDialogOpen, setMcpServerDialogOpen] = useState(false)
+  const [editingServer, setEditingServer] = useState<McpServerConfig | null>(null)
+  const [probing, setProbing] = useState(false)
+  const [selectedMcpTool, setSelectedMcpTool] = useState<{ serverId: string; toolName: string } | null>(null)
+  const [draftMcpBindings, setDraftMcpBindings] = useState<DraftMcpBinding[]>([])
+
   useEffect(() => {
     messagesRef.current = messages
   }, [messages])
@@ -213,13 +224,14 @@ export function BuildPage() {
   // 恢复本地备份
   useEffect(() => {
     void idbGet('workspace').then((v) => {
-      const b = v as { draftId?: string; name?: string; md?: string; files?: GateDraftFile[]; dataset?: string } | null
+      const b = v as { draftId?: string; name?: string; md?: string; files?: GateDraftFile[]; dataset?: string; mcpBindings?: DraftMcpBinding[] } | null
       if (!b) return
       if (b.name) setDraftName(b.name)
       if (b.md) setDraftMd(b.md)
       if (b.files?.length) setDraftFiles(b.files)
       if (b.dataset) setDatasetYaml(b.dataset)
       if (b.draftId) setDraftId(b.draftId)
+      if (b.mcpBindings) setDraftMcpBindings(b.mcpBindings)
     })
   }, [])
 
@@ -228,12 +240,12 @@ export function BuildPage() {
   useEffect(() => {
     if (backupTimer.current) clearTimeout(backupTimer.current)
     backupTimer.current = setTimeout(() => {
-      void idbPut('workspace', { draftId, name: draftName, md: draftMd, files: draftFiles, dataset: datasetYaml })
+      void idbPut('workspace', { draftId, name: draftName, md: draftMd, files: draftFiles, dataset: datasetYaml, mcpBindings: draftMcpBindings })
     }, 700)
     return () => {
       if (backupTimer.current) clearTimeout(backupTimer.current)
     }
-  }, [draftId, draftName, draftMd, draftFiles, datasetYaml])
+  }, [draftId, draftName, draftMd, draftFiles, datasetYaml, draftMcpBindings])
 
   useEffect(() => () => { mountedRef.current = false; abortRef.current?.abort() }, [])
 
@@ -244,6 +256,7 @@ export function BuildPage() {
       setDraftId(d.id)
       setDraftName(d.name)
       setDraftMd(d.markdown)
+      if (d.mcp_bindings) setDraftMcpBindings(d.mcp_bindings)
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e))
     }
@@ -261,6 +274,7 @@ export function BuildPage() {
         markdown: draftMd,
         files: draftFiles,
         dataset: datasetYaml.trim() || null,
+        mcp_bindings: draftMcpBindings,
       }
       const saved = draftId ? await updateDraft(draftId, payload) : await saveDraft(payload)
       setDraftId(saved.id)
@@ -576,6 +590,77 @@ export function BuildPage() {
     }
   }, [library, libraryErr])
 
+  // ── MCP 回调 ──
+  const loadMcpServers = useCallback(async () => {
+    setMcpErr('')
+    try {
+      const servers = await listMcpServers()
+      setMcpServers(servers)
+    } catch (e) {
+      setMcpErr(String(e instanceof Error ? e.message : e))
+    }
+  }, [])
+
+  const refreshMcpTools = useCallback(async () => {
+    setProbing(true)
+    try {
+      const statuses = await probeAllMcpTools()
+      setMcpTools(statuses)
+    } catch (e) {
+      setMcpErr(String(e instanceof Error ? e.message : e))
+    } finally {
+      setProbing(false)
+    }
+  }, [])
+
+  const saveMcpServer = useCallback(async (config: Partial<McpServerConfig>) => {
+    try {
+      if (editingServer) {
+        await updateMcpServer(editingServer.id, config)
+      } else {
+        await addMcpServer(config as Omit<McpServerConfig, 'id' | 'created_at' | 'updated_at'>)
+      }
+      setMcpServerDialogOpen(false)
+      setEditingServer(null)
+      await loadMcpServers()
+      toast.success('MCP 服务器已保存')
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e))
+    }
+  }, [editingServer, loadMcpServers])
+
+  const deleteMcpServer = useCallback(async (id: string) => {
+    try {
+      await removeMcpServer(id)
+      setDraftMcpBindings(prev => prev.filter(b => b.server_id !== id))
+      await loadMcpServers()
+      toast.success('MCP 服务器已删除')
+    } catch (e) {
+      toast.error(String(e instanceof Error ? e.message : e))
+    }
+  }, [loadMcpServers])
+
+  const toggleToolBinding = useCallback((serverId: string, serverName: string, toolName: string) => {
+    setDraftMcpBindings(prev => {
+      const binding = prev.find(b => b.server_id === serverId)
+      if (!binding) return [...prev, { server_id: serverId, server_name: serverName, tool_names: [toolName] }]
+      const has = binding.tool_names.includes(toolName)
+      return prev.map(b =>
+        b.server_id === serverId
+          ? { ...b, tool_names: has ? b.tool_names.filter(t => t !== toolName) : [...b.tool_names, toolName] }
+          : b
+      )
+    })
+  }, [])
+
+  const toggleServerBinding = useCallback((serverId: string, serverName: string) => {
+    setDraftMcpBindings(prev => {
+      const exists = prev.find(b => b.server_id === serverId)
+      if (exists) return prev.filter(b => b.server_id !== serverId)
+      return [...prev, { server_id: serverId, server_name: serverName, tool_names: [] }]
+    })
+  }, [])
+
   const copyText = useCallback((text: string) => {
     void navigator.clipboard.writeText(text).then(() => toast.success('已复制'))
   }, [])
@@ -733,6 +818,7 @@ export function BuildPage() {
               <TabsTrigger value="gate" onMouseDown={loadGateHistory}>检查</TabsTrigger>
               <TabsTrigger value="eval">测评</TabsTrigger>
               <TabsTrigger value="evolve">进化</TabsTrigger>
+              <TabsTrigger value="mcp" onMouseDown={() => { if (mcpServers === null) void loadMcpServers() }}>MCP工具</TabsTrigger>
             </TabsList>
 
             {/* 草稿 */}
@@ -847,6 +933,44 @@ export function BuildPage() {
               </div>
               {evolveJob && <EvolveView job={evolveJob} dark={dark} baseMd={draftMd} onAdopt={() => void adopt()} busy={busy === 'adopt'} copyText={copyText} />}
             </TabsContent>
+
+            {/* MCP 工具 */}
+            <TabsContent value="mcp" className="flex min-h-0 flex-1 flex-col gap-2 data-[state=inactive]:hidden">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => { setEditingServer(null); setMcpServerDialogOpen(true) }}>
+                  <Plus className="mr-1 size-3.5" /> 添加服务器
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void refreshMcpTools()} disabled={probing}>
+                  {probing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RefreshCw className="mr-1 size-3.5" />}
+                  {probing ? '探测中…' : '刷新工具'}
+                </Button>
+                {mcpServers && <span className="text-xs text-muted-foreground">{mcpServers.length} 台服务器</span>}
+              </div>
+              {mcpErr && <p className="text-xs text-red-600 dark:text-red-400">{mcpErr}</p>}
+              {mcpServers && mcpServers.length === 0 && !mcpErr && (
+                <p className="text-sm text-muted-foreground">尚未注册 MCP 服务器。点击「添加服务器」开始。</p>
+              )}
+              {mcpServers && mcpServers.length > 0 && (
+                <div className="flex min-h-0 flex-1 gap-2">
+                  <div className="w-[200px] shrink-0 overflow-y-auto rounded-md border bg-muted/20 p-1">
+                    <McpToolTree
+                      servers={mcpServers}
+                      tools={mcpTools}
+                      bindings={draftMcpBindings}
+                      selectedTool={selectedMcpTool}
+                      onSelectTool={setSelectedMcpTool}
+                      onToggleTool={toggleToolBinding}
+                      onToggleServer={toggleServerBinding}
+                      onDeleteServer={(id) => void deleteMcpServer(id)}
+                      onEditServer={(s) => { setEditingServer(s); setMcpServerDialogOpen(true) }}
+                    />
+                  </div>
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <McpToolDetail selectedTool={selectedMcpTool} tools={mcpTools} servers={mcpServers} />
+                  </div>
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </div>
       </div>
@@ -913,6 +1037,20 @@ export function BuildPage() {
               保存
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MCP 服务器编辑 */}
+      <Dialog open={mcpServerDialogOpen} onOpenChange={setMcpServerDialogOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingServer ? '编辑 MCP 服务器' : '添加 MCP 服务器'}</DialogTitle>
+          </DialogHeader>
+          <McpServerForm
+            server={editingServer}
+            onSave={(config) => void saveMcpServer(config)}
+            onCancel={() => { setMcpServerDialogOpen(false); setEditingServer(null) }}
+          />
         </DialogContent>
       </Dialog>
     </div>
@@ -1464,4 +1602,299 @@ function ChatCardView({
     )
   }
   return null
+}
+
+// ── MCP 子组件 ──────────────────────────────────────────────────
+
+// MCP 工具树（服务器作为目录，工具作为叶子）
+function McpToolTree({
+  servers,
+  tools,
+  bindings,
+  selectedTool,
+  onSelectTool,
+  onToggleTool,
+  onToggleServer,
+  onDeleteServer,
+  onEditServer,
+}: {
+  servers: McpServerConfig[]
+  tools: McpServerStatus[] | null
+  bindings: DraftMcpBinding[]
+  selectedTool: { serverId: string; toolName: string } | null
+  onSelectTool: (t: { serverId: string; toolName: string } | null) => void
+  onToggleTool: (serverId: string, serverName: string, toolName: string) => void
+  onToggleServer: (serverId: string, serverName: string) => void
+  onDeleteServer: (id: string) => void
+  onEditServer: (s: McpServerConfig) => void
+}) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const toggleDir = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const isToolBound = (serverId: string, toolName: string) => {
+    const b = bindings.find((b) => b.server_id === serverId)
+    if (!b) return false
+    return b.tool_names.length === 0 || b.tool_names.includes(toolName)
+  }
+  const isServerBound = (serverId: string) => bindings.some((b) => b.server_id === serverId)
+
+  const getServerTools = (serverId: string): McpToolInfo[] => {
+    const status = tools?.find((t) => t.serverId === serverId)
+    return status?.tools || []
+  }
+  const getServerStatus = (serverId: string): McpServerStatus | undefined =>
+    tools?.find((t) => t.serverId === serverId)
+
+  return (
+    <div className="space-y-0.5">
+      {servers.map((server) => {
+        const isExpanded = expanded.has(server.id)
+        const serverTools = getServerTools(server.id)
+        const status = getServerStatus(server.id)
+        const bound = isServerBound(server.id)
+        return (
+          <div key={server.id}>
+            <div className="group flex items-center" style={{ paddingLeft: '4px' }}>
+              <button onClick={() => toggleDir(server.id)} className="flex flex-1 items-center gap-1 py-1 text-xs rounded hover:bg-muted/50">
+                {isExpanded ? <ChevronDown className="h-3 w-3 text-muted-foreground" /> : <ChevronUp className="h-3 w-3 text-muted-foreground" />}
+                {isExpanded ? <FolderOpen className="h-3 w-3 text-amber-500" /> : <Folder className="h-3 w-3 text-amber-500" />}
+                <span className="truncate text-muted-foreground">{server.name}</span>
+              </button>
+              <button
+                onClick={() => onToggleServer(server.id, server.name)}
+                className={`mr-0.5 rounded p-0.5 ${bound ? 'text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+                title={bound ? '取消绑定整台服务器' : '绑定整台服务器全部工具'}
+              >
+                {bound ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+              </button>
+              <button onClick={() => onEditServer(server)} className="hidden group-hover:block text-muted-foreground hover:text-foreground mr-0.5">
+                <Wrench className="h-3 w-3" />
+              </button>
+              <button onClick={() => onDeleteServer(server.id)} className="hidden group-hover:block text-muted-foreground hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+            {status && (
+              <div style={{ paddingLeft: '24px' }}>
+                <span className={`text-[10px] ${status.status === 'online' ? 'text-emerald-600' : status.status === 'error' ? 'text-red-500' : 'text-muted-foreground'}`}>
+                  {status.status === 'online' ? `${serverTools.length} 个工具` : status.error || status.status}
+                </span>
+              </div>
+            )}
+            {isExpanded && serverTools.map((tool) => {
+              const isSelected = selectedTool?.serverId === server.id && selectedTool?.toolName === tool.name
+              const toolBound = isToolBound(server.id, tool.name)
+              return (
+                <div key={tool.name} className="group flex items-center" style={{ paddingLeft: '28px' }}>
+                  <button
+                    onClick={() => onSelectTool({ serverId: server.id, toolName: tool.name })}
+                    className={`flex flex-1 items-center gap-1 py-1 pr-1 text-xs rounded ${
+                      isSelected ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium' : 'hover:bg-muted/50'
+                    }`}
+                  >
+                    <Wrench className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{tool.name}</span>
+                  </button>
+                  <button
+                    onClick={() => onToggleTool(server.id, server.name, tool.name)}
+                    className={`mr-0.5 rounded p-0.5 ${toolBound ? 'text-emerald-600' : 'text-muted-foreground hover:text-foreground'}`}
+                    title={toolBound ? '取消绑定此工具' : '绑定此工具'}
+                  >
+                    {toolBound ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                  </button>
+                </div>
+              )
+            })}
+            {isExpanded && !tools && (
+              <div style={{ paddingLeft: '28px' }}>
+                <span className="text-[10px] text-muted-foreground">点击「刷新工具」探测</span>
+              </div>
+            )}
+            {isExpanded && tools && serverTools.length === 0 && (
+              <div style={{ paddingLeft: '28px' }}>
+                <span className="text-[10px] text-muted-foreground">无可用工具</span>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// MCP 工具详情面板（只读）
+function McpToolDetail({
+  selectedTool,
+  tools,
+  servers,
+}: {
+  selectedTool: { serverId: string; toolName: string } | null
+  tools: McpServerStatus[] | null
+  servers: McpServerConfig[]
+}) {
+  if (!selectedTool) {
+    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">选择一个工具查看详情</div>
+  }
+  const status = tools?.find((t) => t.serverId === selectedTool.serverId)
+  const tool = status?.tools.find((t) => t.name === selectedTool.toolName)
+  const server = servers.find((s) => s.id === selectedTool.serverId)
+  if (!tool) {
+    return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">工具不可用（服务器可能离线）</div>
+  }
+  return (
+    <div className="flex h-full flex-col gap-2 overflow-y-auto">
+      <div className="flex items-center gap-2">
+        <Wrench className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">{tool.name}</span>
+        <span className="text-xs text-muted-foreground">{server?.name}</span>
+      </div>
+      {tool.description && (
+        <div className="rounded-md border bg-muted/20 p-2 text-xs">
+          <p className="font-medium text-muted-foreground">描述</p>
+          <p className="mt-1">{tool.description}</p>
+        </div>
+      )}
+      <div className="rounded-md border bg-muted/20 p-2">
+        <p className="text-xs font-medium text-muted-foreground">参数 Schema</p>
+        <pre className="mt-1 max-h-[40vh] overflow-y-auto rounded bg-background p-2 text-xs font-mono">
+          {JSON.stringify(tool.inputSchema, null, 2)}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+// MCP 服务器编辑表单
+function McpServerForm({
+  server,
+  onSave,
+  onCancel,
+}: {
+  server: McpServerConfig | null
+  onSave: (config: Partial<McpServerConfig>) => void
+  onCancel: () => void
+}) {
+  const [name, setName] = useState('')
+  const [transport, setTransport] = useState<'stdio' | 'sse' | 'streamable-http'>('stdio')
+  const [command, setCommand] = useState('')
+  const [args, setArgs] = useState('')
+  const [url, setUrl] = useState('')
+  const [envText, setEnvText] = useState('')
+  const [enabled, setEnabled] = useState(true)
+
+  useEffect(() => {
+    if (server) {
+      setName(server.name)
+      setTransport(server.transport)
+      setCommand(server.command || '')
+      setArgs(server.args?.join(' ') || '')
+      setUrl(server.url || '')
+      setEnvText(server.env ? Object.entries(server.env).map(([k, v]) => `${k}=${v}`).join('\n') : '')
+      setEnabled(server.enabled)
+    } else {
+      setName('')
+      setTransport('stdio')
+      setCommand('')
+      setArgs('')
+      setUrl('')
+      setEnvText('')
+      setEnabled(true)
+    }
+  }, [server])
+
+  const handleSubmit = () => {
+    if (!name.trim()) return
+    const config: Partial<McpServerConfig> = {
+      name: name.trim(),
+      transport,
+      enabled,
+      ...(transport === 'stdio'
+        ? { command: command.trim(), args: args.trim() ? args.trim().split(/\s+/) : [] }
+        : { url: url.trim() }),
+      ...(envText.trim()
+        ? {
+            env: Object.fromEntries(
+              envText
+                .trim()
+                .split('\n')
+                .filter(Boolean)
+                .map((line) => {
+                  const idx = line.indexOf('=')
+                  return idx > 0 ? [line.slice(0, idx), line.slice(idx + 1)] : null
+                })
+                .filter(Boolean) as [string, string][],
+            ),
+          }
+        : {}),
+    }
+    onSave(config)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label htmlFor="mcp-name">服务器名称</Label>
+        <Input id="mcp-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="my-mcp-server" />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="mcp-transport">传输方式</Label>
+        <select
+          id="mcp-transport"
+          value={transport}
+          onChange={(e) => setTransport(e.target.value as 'stdio' | 'sse' | 'streamable-http')}
+          className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="stdio">stdio（本地子进程）</option>
+          <option value="sse">sse（远程 SSE）</option>
+          <option value="streamable-http">streamable-http（远程 HTTP）</option>
+        </select>
+      </div>
+      {transport === 'stdio' ? (
+        <>
+          <div className="space-y-1">
+            <Label htmlFor="mcp-command">命令（command）</Label>
+            <Input id="mcp-command" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="mcp-args">参数（空格分隔）</Label>
+            <Input id="mcp-args" value={args} onChange={(e) => setArgs(e.target.value)} placeholder="-y @modelcontextprotocol/server-filesystem /tmp" />
+          </div>
+        </>
+      ) : (
+        <div className="space-y-1">
+          <Label htmlFor="mcp-url">服务器 URL</Label>
+          <Input id="mcp-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:3001/sse" />
+        </div>
+      )}
+      <div className="space-y-1">
+        <Label htmlFor="mcp-env">环境变量（每行 KEY=VALUE）</Label>
+        <Textarea
+          id="mcp-env"
+          value={envText}
+          onChange={(e) => setEnvText(e.target.value)}
+          placeholder={'API_KEY=xxx\nDEBUG=true'}
+          className="font-mono text-xs"
+          rows={3}
+        />
+      </div>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+        启用
+      </label>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>取消</Button>
+        <Button onClick={handleSubmit} disabled={!name.trim() || (transport === 'stdio' ? !command.trim() : !url.trim())}>
+          {server ? '更新' : '添加'}
+        </Button>
+      </div>
+    </div>
+  )
 }

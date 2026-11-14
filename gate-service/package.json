@@ -13,6 +13,7 @@
   "dependencies": {
     "adm-zip": "^0.5.16",
     "gray-matter": "^4.0.3",
-    "yaml": "^2.6.1"
+    "yaml": "^2.6.1",
+    "@modelcontextprotocol/sdk": "^1.0.0"
   }
 }

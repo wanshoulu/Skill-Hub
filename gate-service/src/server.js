@@ -11,6 +11,10 @@ import {
 import { packDraftDir } from './pack.js';
 import { beginGate, executeGate, beginEval, executeEval, startEvolve, adoptJob, agentChat } from './orchestrator.js';
 import { llm } from './llm.js';
+import {
+  listMcpServers, addMcpServer, updateMcpServer, removeMcpServer,
+  probeMcpServer, probeAllServers, invalidateProbe,
+} from './mcp.js';
 
 const PORT = Number(process.env.PORT || 3002);
 const VERSION = '0.1.0';
@@ -101,19 +105,22 @@ async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = nul
     fs.mkdirSync(path.join(dir, 'evals'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'evals', 'dataset.yaml'), dataset, 'utf8');
   }
-  const meta = { id, name, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset) };
+  const meta = { id, name, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset), mcp_bindings: [] };
   saveJson(path.relative(DATA_DIR, path.join(dir, 'meta.json')).replace(/\\/g, '/'), meta);
   return meta;
 }
 
 async function writeDraft(id, body) {
   const meta = await writeDraftTo(draftDir(id), id, body);
-  // 恢复 created_at（writeDraftTo 不读旧 meta）
+  // 恢复 created_at 和 mcp_bindings（writeDraftTo 不读旧 meta）
   const old = readJson(`drafts/${id}/meta.json`);
   if (old?.created_at && meta.created_at !== old.created_at) {
     meta.created_at = old.created_at;
-    saveJson(`drafts/${id}/meta.json`, meta);
   }
+  if (old?.mcp_bindings) {
+    meta.mcp_bindings = old.mcp_bindings;
+  }
+  saveJson(`drafts/${id}/meta.json`, meta);
   return meta;
 }
 
@@ -169,6 +176,46 @@ async function route(req, res) {
     return sse.close();
   }
 
+  // ── MCP 服务器注册表 ──────────────────────────────────────────────
+  if (p === '/v1/mcp/servers' && method === 'GET') {
+    return ok(res, listMcpServers());
+  }
+  if (p === '/v1/mcp/servers' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    if (!body.name) return fail(res, 400, '需要 name');
+    if (body.transport === 'stdio' && !body.command) return fail(res, 400, 'stdio 传输需要 command');
+    if ((body.transport === 'sse' || body.transport === 'streamable-http') && !body.url) return fail(res, 400, '该传输需要 url');
+    return ok(res, addMcpServer(body));
+  }
+  const mcpServerM = p.match(/^\/v1\/mcp\/servers\/(mcp_[A-Za-z0-9_-]+)$/);
+  if (mcpServerM) {
+    const id = mcpServerM[1];
+    if (method === 'PUT') {
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+      catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+      invalidateProbe(id);
+      try { return ok(res, updateMcpServer(id, body)); }
+      catch (e) { return fail(res, e.status || 500, String(e.message || e)); }
+    }
+    if (method === 'DELETE') {
+      invalidateProbe(id);
+      removeMcpServer(id);
+      return ok(res, { deleted: id });
+    }
+  }
+  // MCP 工具探测
+  if (p === '/v1/mcp/tools' && method === 'GET') {
+    return ok(res, await probeAllServers());
+  }
+  const mcpProbeM = p.match(/^\/v1\/mcp\/servers\/(mcp_[A-Za-z0-9_-]+)\/tools$/);
+  if (mcpProbeM && method === 'GET') {
+    try { return ok(res, await probeMcpServer(mcpProbeM[1])); }
+    catch (e) { return fail(res, e.status || 500, String(e.message || e)); }
+  }
+
   // ── 草稿 ──
   if (p === '/v1/drafts' && method === 'POST') {
     let body;
@@ -221,6 +268,21 @@ async function route(req, res) {
         const histDir = path.join(dir, 'history');
         fs.mkdirSync(histDir, { recursive: true });
         fs.writeFileSync(path.join(histDir, `${Date.now()}-SKILL.md`), backupBuf);
+      }
+      // 保留旧 mcp_bindings（writeDraftTo 会重置为空数组）
+      const oldMeta = readJson(`drafts/${id}/meta.json`);
+      if (oldMeta?.mcp_bindings) {
+        oldMeta.mcp_bindings = oldMeta.mcp_bindings;
+        saveJson(`drafts/${id}/meta.json`, oldMeta);
+      }
+      // 如果请求体包含 mcp_bindings，更新它
+      if (body.mcp_bindings !== undefined) {
+        const meta = readJson(`drafts/${id}/meta.json`);
+        if (meta) {
+          meta.mcp_bindings = body.mcp_bindings;
+          meta.updated_at = Date.now();
+          saveJson(`drafts/${id}/meta.json`, meta);
+        }
       }
       return ok(res, draftView(readJson(`drafts/${id}/meta.json`)));
     }

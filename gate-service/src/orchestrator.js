@@ -8,6 +8,7 @@ import { llm } from './llm.js';
 import { unzip, sha256, packDraftDir, findSkillMd } from './pack.js';
 import matter from 'gray-matter';
 import fs from 'node:fs';
+import { getDraftBoundTools } from './mcp.js';
 import path from 'node:path';
 
 const BUILD_AGENT_URL = (process.env.BUILD_AGENT_URL || 'http://skill-build-agent:8300').replace(/\/+$/, '');
@@ -283,14 +284,40 @@ export function extractArtifacts(answer) {
 }
 
 // create：转发 skill-build-agent（事件原样透传），done 后提取产出 card
-async function forwardCreate(message, history, emit) {
+async function forwardCreate(message, history, emit, mcpBindings = []) {
   emit('phase', { name: '技能创建', status: 'running', detail: '转发 skill-build-agent' });
+
+  // 构建 MCP 工具上下文（探测失败不阻断创建流程）
+  let mcpContext = '';
+  if (mcpBindings.length) {
+    try {
+      const boundTools = await getDraftBoundTools(mcpBindings);
+      if (boundTools.length) {
+        const toolDescriptions = boundTools.map(s =>
+          `### ${s.server_name}\n` +
+          s.tools.map(t =>
+            `- **${t.name}**: ${t.description || '无描述'}\n` +
+            `  参数: ${JSON.stringify(t.inputSchema)}`
+          ).join('\n')
+        ).join('\n\n');
+        mcpContext = `\n\n<available_mcp_tools>\n${toolDescriptions}\n</available_mcp_tools>\n` +
+          `\n创建技能时可引用上述 MCP 工具。在 SKILL.md 中使用如下格式声明工具依赖：\n` +
+          '```yaml\nmcp_tools:\n  - server: <server_name>\n    tool: <tool_name>\n```\n';
+      }
+    } catch (e) {
+      emit('phase', { name: 'MCP工具探测', status: 'done', detail: `探测失败：${e.message || e}` });
+    }
+  }
+
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), 120_000);
   const res = await fetch(`${BUILD_AGENT_URL}/api/skill-build-agent/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({
+      message: message + mcpContext,
+      history,
+    }),
     signal: ctrl.signal,
   }).catch((e) => {
     clearTimeout(timeout);
@@ -346,7 +373,13 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
 
   // 2) 分发
   if (intent === 'create') {
-    const answer = await forwardCreate(message, history, emit);
+    // 读取草稿的 MCP 绑定
+    let mcpBindings = [];
+    if (draft_id) {
+      const meta = readJson(`drafts/${draft_id}/meta.json`);
+      mcpBindings = meta?.mcp_bindings || [];
+    }
+    const answer = await forwardCreate(message, history, emit, mcpBindings);
     // 提取产出（若有）→ card 供前端预览保存
     const art = extractArtifacts(answer);
     if (art.markdown) {

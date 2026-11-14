@@ -19,6 +19,7 @@ export interface GateDraftView {
   has_dataset: boolean
   dataset: boolean
   files: Array<{ path: string; size: number }>
+  mcp_bindings?: DraftMcpBinding[]
 }
 
 export interface GateDraftDetail extends GateDraftView {
@@ -176,6 +177,7 @@ export async function saveDraft(payload: {
   markdown: string
   files?: GateDraftFile[]
   dataset?: string | null
+  mcp_bindings?: DraftMcpBinding[]
 }): Promise<GateDraftView> {
   return gateJson<GateDraftView>('/drafts', 'POST', payload)
 }
@@ -185,6 +187,7 @@ export async function updateDraft(id: string, payload: {
   markdown: string
   files?: GateDraftFile[]
   dataset?: string | null
+  mcp_bindings?: DraftMcpBinding[]
 }): Promise<GateDraftView> {
   return gateJson<GateDraftView>(`/drafts/${encodeURIComponent(id)}`, 'PUT', payload)
 }
@@ -245,6 +248,70 @@ export interface EvidenceView {
 
 export async function getEvidence(ns: string, name: string, digest: string): Promise<EvidenceView> {
   return gateGet<EvidenceView>(`/evidence/${encodeURIComponent(ns)}/${encodeURIComponent(name)}/${encodeURIComponent(digest)}`)
+}
+
+// ── MCP 服务器与工具 ─────────────────────────────────────────────
+
+export interface McpServerConfig {
+  id: string
+  name: string
+  transport: 'stdio' | 'sse' | 'streamable-http'
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  enabled: boolean
+  created_at: number
+  updated_at: number
+}
+
+export interface McpToolInfo {
+  name: string
+  description?: string
+  inputSchema: Record<string, unknown>
+}
+
+export interface McpServerStatus {
+  serverId: string
+  status: 'online' | 'offline' | 'error'
+  tools: McpToolInfo[]
+  error?: string
+  probed_at: number
+}
+
+export interface DraftMcpBinding {
+  server_id: string
+  server_name: string
+  tool_names: string[] // 空数组 = 该服务器全部工具
+}
+
+export async function listMcpServers(): Promise<McpServerConfig[]> {
+  return gateGet<McpServerConfig[]>('/mcp/servers')
+}
+
+export async function addMcpServer(payload: Omit<McpServerConfig, 'id' | 'created_at' | 'updated_at'>): Promise<McpServerConfig> {
+  return gateJson<McpServerConfig>('/mcp/servers', 'POST', payload)
+}
+
+export async function updateMcpServer(id: string, payload: Partial<McpServerConfig>): Promise<McpServerConfig> {
+  return gateJson<McpServerConfig>(`/mcp/servers/${encodeURIComponent(id)}`, 'PUT', payload)
+}
+
+export async function removeMcpServer(id: string): Promise<{ deleted: string }> {
+  const res = await fetch(`${GATE_BASE}/mcp/servers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  return unwrap(res) as Promise<{ deleted: string }>
+}
+
+export async function probeAllMcpTools(): Promise<McpServerStatus[]> {
+  return gateGet<McpServerStatus[]>('/mcp/tools')
+}
+
+export async function probeMcpServer(id: string): Promise<McpServerStatus> {
+  return gateGet<McpServerStatus>(`/mcp/servers/${encodeURIComponent(id)}/tools`)
 }
 
 // ── 技能库（skill-build-agent，G2 链路）──────────────────────────
