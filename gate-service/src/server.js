@@ -106,7 +106,7 @@ async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = nul
     fs.writeFileSync(path.join(dir, 'evals', 'dataset.yaml'), dataset, 'utf8');
   }
   const meta = { id, name, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset), mcp_bindings: [] };
-  saveJson(path.relative(DATA_DIR, path.join(dir, 'meta.json')).replace(/\\/g, '/'), meta);
+  fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
   return meta;
 }
 
@@ -117,8 +117,12 @@ async function writeDraft(id, body) {
   if (old?.created_at && meta.created_at !== old.created_at) {
     meta.created_at = old.created_at;
   }
-  if (old?.mcp_bindings) {
+  if (old?.mcp_bindings?.length) {
     meta.mcp_bindings = old.mcp_bindings;
+  }
+  // 从 body 提取 mcp_bindings（新建草稿时需要）
+  if (body.mcp_bindings !== undefined) {
+    meta.mcp_bindings = body.mcp_bindings;
   }
   saveJson(`drafts/${id}/meta.json`, meta);
   return meta;
@@ -269,20 +273,14 @@ async function route(req, res) {
         fs.mkdirSync(histDir, { recursive: true });
         fs.writeFileSync(path.join(histDir, `${Date.now()}-SKILL.md`), backupBuf);
       }
-      // 保留旧 mcp_bindings（writeDraftTo 会重置为空数组）
-      const oldMeta = readJson(`drafts/${id}/meta.json`);
-      if (oldMeta?.mcp_bindings) {
-        oldMeta.mcp_bindings = oldMeta.mcp_bindings;
-        saveJson(`drafts/${id}/meta.json`, oldMeta);
-      }
-      // 如果请求体包含 mcp_bindings，更新它
-      if (body.mcp_bindings !== undefined) {
-        const meta = readJson(`drafts/${id}/meta.json`);
-        if (meta) {
+      // 如果请求体包含 mcp_bindings，更新 meta
+      const meta = readJson(`drafts/${id}/meta.json`);
+      if (meta) {
+        if (body.mcp_bindings !== undefined) {
           meta.mcp_bindings = body.mcp_bindings;
-          meta.updated_at = Date.now();
-          saveJson(`drafts/${id}/meta.json`, meta);
         }
+        meta.updated_at = Date.now();
+        saveJson(`drafts/${id}/meta.json`, meta);
       }
       return ok(res, draftView(readJson(`drafts/${id}/meta.json`)));
     }
