@@ -1,3 +1,7 @@
+<p align="center">
+  <b>简体中文</b> · <a href="README.en.md">English</a>
+</p>
+
 <div align="center">
 
 # 🧠 Skill Hub
@@ -11,14 +15,6 @@
 [![Backend](https://img.shields.io/badge/backend-Node%20%2B%20Python%20(OpenJiuWen)-339933)](https://www.python.org/)
 
 </div>
-
----
-
-### English
-
-**Skill Hub** is a full-lifecycle platform for AI agent skills: author, validate, benchmark, evolve, publish, install, and trial-run — end to end. Built on the [iflytek/skillhub](https://github.com/iflytek/iflytek-skillhub) registry, it adds a working chain that makes skills *real*: a Node gate service for validation rules, a Python trial-run agent (OpenJiuWen DeepAgent) that actually executes installed skills in sandboxed workspaces, and a React console covering the whole flow.
-
-> 中文文档见下。
 
 ---
 > **Skill Hub** 在 [iflytek/skillhub](https://github.com/iflytek/skillhub) 注册中心基础上，自研补齐了技能**创建 → 检查 → 测评 → 进化 → 发布 → 安装 → 对话试运行**的完整链路，让 Agent 技能不再只是"注册表里一行记录"，而是**真实可装、真实可跑**。
