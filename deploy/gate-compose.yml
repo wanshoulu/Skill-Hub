@@ -67,6 +67,8 @@ services:
       SKILLS_DIR: /data/skills
       WORKSPACE_DIR: /data/workspace
       REGISTRY_BASE_URL: http://server:8080
+      # 注册中心访问令牌：匿名只能搜/装 PUBLIC 技能；带令牌可解析安装所属命名空间的 PRIVATE/NAMESPACE_ONLY 技能
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
       AUTO_INSTALL_SKILLS: ${AUTO_INSTALL_SKILLS:-personal/stock-lookup}
     volumes:
       - skill_app_data:/data
