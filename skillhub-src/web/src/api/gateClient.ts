@@ -319,6 +319,7 @@ export async function probeMcpServer(id: string): Promise<McpServerStatus> {
 export interface McpCatalogItem {
   id: string
   name: string
+  display_name?: string
   description: string
   transport: 'stdio' | 'sse' | 'streamable-http'
   command?: string
@@ -328,6 +329,10 @@ export interface McpCatalogItem {
   headers?: Record<string, string>
   category: string
   keywords: string[]
+  requires_env?: string[]
+  requires_arg?: string
+  registry?: string
+  homepage?: string
 }
 
 export async function getMcpCatalog(): Promise<McpCatalogItem[]> {

@@ -407,13 +407,16 @@ function McpMarketSidebar() {
           ) : filtered.map(item => (
             <div key={item.id} className="rounded-md border bg-card p-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="font-medium">{item.name}</span>
+                <span className="font-medium">{item.display_name || item.name}</span>
                 <span className="rounded bg-muted px-1 text-[9px] text-muted-foreground">{item.transport}</span>
               </div>
               <p className="mt-0.5 line-clamp-2 text-muted-foreground">{item.description}</p>
               <div className="mt-0.5 flex flex-wrap gap-0.5">
                 {item.keywords.slice(0, 3).map(kw => (
                   <span key={kw} className="text-[9px] text-muted-foreground/60">#{kw}</span>
+                ))}
+                {item.requires_env?.map(env => (
+                  <span key={env} className="rounded bg-amber-100 px-1 text-[9px] text-amber-700 dark:bg-amber-900 dark:text-amber-300">需 {env}</span>
                 ))}
               </div>
             </div>

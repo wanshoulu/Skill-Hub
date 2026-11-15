@@ -1623,7 +1623,7 @@ function McpSuggestCard({ suggestions }: { suggestions: McpCatalogItem[] }) {
           {suggestions.map(s => (
             <div key={s.id} className="rounded border border-blue-200 bg-white p-1.5 dark:border-blue-900 dark:bg-blue-950/50">
               <div className="flex items-center gap-1.5">
-                <span className="font-medium">{s.name}</span>
+                <span className="font-medium">{s.display_name || s.name}</span>
                 <span className="rounded bg-blue-100 px-1 text-[10px] text-blue-700 dark:bg-blue-900 dark:text-blue-200">{s.category}</span>
                 <span className="rounded bg-gray-100 px-1 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">{s.transport}</span>
               </div>

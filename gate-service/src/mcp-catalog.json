@@ -2,111 +2,325 @@
   {
     "id": "preset.filesystem",
     "name": "Filesystem",
-    "description": "文件系统读写操作，支持目录浏览、文件读写、搜索",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
-    "env": {},
+    "display_name": "文件系统 Filesystem",
+    "description": "本地文件系统读写：读文件、写文件、列目录、搜索、创建目录",
     "category": "文件操作",
-    "keywords": ["文件", "file", "filesystem", "读写", "目录", "folder", "读取文件", "写入文件", "搜索文件"]
-  },
-  {
-    "id": "preset.fetch",
-    "name": "Fetch",
-    "description": "网页抓取与 URL 内容获取，支持 HTML 转 Markdown",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-fetch"],
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "/data"
+    ],
     "env": {},
-    "category": "网络请求",
-    "keywords": ["网页", "fetch", "url", "抓取", "爬虫", "web", "http", "请求", "爬取", "下载内容"]
-  },
-  {
-    "id": "preset.github",
-    "name": "GitHub",
-    "description": "GitHub 仓库操作：搜索仓库、读取文件、管理 Issue 和 PR",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-github"],
-    "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "" },
-    "category": "开发工具",
-    "keywords": ["github", "仓库", "repository", "代码", "issue", "pr", "pull request", "commit", "分支", "branch"]
-  },
-  {
-    "id": "preset.sqlite",
-    "name": "SQLite",
-    "description": "SQLite 数据库查询与操作",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-sqlite", "--db-path", "/tmp/data.db"],
-    "env": {},
-    "category": "数据库",
-    "keywords": ["sqlite", "数据库", "database", "sql", "查询", "query", "表", "table", "db"]
-  },
-  {
-    "id": "preset.brave-search",
-    "name": "Brave Search",
-    "description": "Brave 搜索引擎，支持 Web 搜索和本地搜索",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
-    "env": { "BRAVE_API_KEY": "" },
-    "category": "搜索",
-    "keywords": ["搜索", "search", "brave", "查找", "检索", "google", "bing", "web search"]
-  },
-  {
-    "id": "preset.puppeteer",
-    "name": "Puppeteer",
-    "description": "浏览器自动化：页面截图、PDF 生成、表单填写、爬取动态网页",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
-    "env": {},
-    "category": "浏览器自动化",
-    "keywords": ["浏览器", "browser", "puppeteer", "截图", "screenshot", "自动化", "automation", "网页操作", "pdf"]
+    "requires_env": [],
+    "registry": "@modelcontextprotocol/server-filesystem",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem",
+    "keywords": [
+      "文件",
+      "file",
+      "filesystem",
+      "读写",
+      "目录",
+      "folder",
+      "读取文件",
+      "写入文件",
+      "搜索文件",
+      "txt",
+      "markdown"
+    ]
   },
   {
     "id": "preset.memory",
     "name": "Memory",
-    "description": "基于知识图谱的持久化记忆存储",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-memory"],
-    "env": {},
+    "display_name": "记忆图谱 Memory",
+    "description": "基于知识图谱的长期记忆：实体、关系、观察的增删查",
     "category": "存储",
-    "keywords": ["记忆", "memory", "知识图谱", "knowledge graph", "存储", "store", "记住", "持久化"]
-  },
-  {
-    "id": "preset.postgres",
-    "name": "PostgreSQL",
-    "description": "PostgreSQL 数据库查询与操作",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-postgres"],
-    "env": { "POSTGRES_CONNECTION_STRING": "" },
-    "category": "数据库",
-    "keywords": ["postgres", "postgresql", "数据库", "database", "sql", "查询", "query", "db"]
-  },
-  {
-    "id": "preset.time",
-    "name": "Time",
-    "description": "获取当前时间和时区转换",
-    "transport": "stdio",
-    "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-time"],
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-memory"
+    ],
     "env": {},
-    "category": "工具",
-    "keywords": ["时间", "time", "时区", "timezone", "时钟", "clock", "日期", "date"]
+    "requires_env": [],
+    "registry": "@modelcontextprotocol/server-memory",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/memory",
+    "keywords": [
+      "记忆",
+      "memory",
+      "知识图谱",
+      "knowledge graph",
+      "记住",
+      "实体",
+      "关系",
+      "持久化",
+      "档案",
+      "客户画像"
+    ]
   },
   {
     "id": "preset.sequential-thinking",
-    "name": "Sequential Thinking",
-    "description": "结构化逐步推理与思维链",
+    "name": "SequentialThinking",
+    "display_name": "逐步推理 Sequential Thinking",
+    "description": "结构化分步推理：把复杂任务拆成可修订的思考步骤",
+    "category": "推理",
     "transport": "stdio",
     "command": "npx",
-    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-sequential-thinking"
+    ],
     "env": {},
-    "category": "推理",
-    "keywords": ["推理", "reasoning", "思考", "thinking", "思维链", "chain of thought", "分析", "逻辑"]
+    "requires_env": [],
+    "registry": "@modelcontextprotocol/server-sequential-thinking",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+    "keywords": [
+      "推理",
+      "reasoning",
+      "思考",
+      "thinking",
+      "思维链",
+      "chain of thought",
+      "分步",
+      "规划",
+      "拆解"
+    ]
+  },
+  {
+    "id": "preset.everything",
+    "name": "Everything",
+    "display_name": "官方示例 Everything",
+    "description": "MCP 官方参考服务器：echo / add / 多模态示例，用于联通性与链路自检",
+    "category": "调试自检",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-everything"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "@modelcontextprotocol/server-everything",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/everything",
+    "keywords": [
+      "示例",
+      "demo",
+      "测试",
+      "自检",
+      "echo",
+      "连通",
+      "冒烟"
+    ]
+  },
+  {
+    "id": "preset.context7",
+    "name": "Context7",
+    "display_name": "技术文档 Context7",
+    "description": "实时抓取框架/库的官方文档与代码示例（resolve-library-id、get-library-docs）",
+    "category": "知识检索",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@upstash/context7-mcp"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "@upstash/context7-mcp",
+    "homepage": "https://github.com/upstash/context7",
+    "keywords": [
+      "文档",
+      "docs",
+      "api 文档",
+      "context7",
+      "库",
+      "框架",
+      "sdk",
+      "示例代码",
+      "版本",
+      "npm 包"
+    ]
+  },
+  {
+    "id": "preset.playwright",
+    "name": "Playwright",
+    "display_name": "浏览器自动化 Playwright",
+    "description": "打开网页、点击、填表、截图、抓取动态页面（需运行环境已装浏览器内核）",
+    "category": "浏览器自动化",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@playwright/mcp",
+      "--isolated"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "@playwright/mcp",
+    "homepage": "https://github.com/microsoft/playwright-mcp",
+    "keywords": [
+      "浏览器",
+      "browser",
+      "playwright",
+      "网页操作",
+      "点击",
+      "填表",
+      "登录",
+      "动态网页",
+      "网页测试"
+    ]
+  },
+  {
+    "id": "preset.chrome-devtools",
+    "name": "ChromeDevTools",
+    "display_name": "Chrome DevTools 调试",
+    "description": "基于 CDP 的页面性能分析、网络抓取、截图与调试",
+    "category": "浏览器自动化",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "chrome-devtools-mcp"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "chrome-devtools-mcp",
+    "homepage": "https://github.com/ChromeDevTools/chrome-devtools-mcp",
+    "keywords": [
+      "devtools",
+      "调试",
+      "性能",
+      "network",
+      "控制台",
+      "chrome",
+      "截图",
+      "抓包"
+    ]
+  },
+  {
+    "id": "preset.github",
+    "name": "GitHub",
+    "display_name": "GitHub",
+    "description": "仓库检索、读文件、Issue / PR / commit 操作（需要 Personal Access Token）",
+    "category": "开发协作",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-github"
+    ],
+    "env": {
+      "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+    },
+    "requires_env": [
+      "GITHUB_PERSONAL_ACCESS_TOKEN"
+    ],
+    "registry": "@modelcontextprotocol/server-github",
+    "homepage": "https://github.com/github/github-mcp-server",
+    "keywords": [
+      "github",
+      "仓库",
+      "repository",
+      "issue",
+      "pr",
+      "pull request",
+      "commit",
+      "分支",
+      "代码托管"
+    ]
+  },
+  {
+    "id": "preset.brave-search",
+    "name": "BraveSearch",
+    "display_name": "Brave 搜索",
+    "description": "Web / 本地搜索（需要 Brave API Key）",
+    "category": "搜索",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-brave-search"
+    ],
+    "env": {
+      "BRAVE_API_KEY": ""
+    },
+    "requires_env": [
+      "BRAVE_API_KEY"
+    ],
+    "registry": "@modelcontextprotocol/server-brave-search",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/brave-search",
+    "keywords": [
+      "搜索",
+      "search",
+      "google",
+      "bing",
+      "检索",
+      "查找资料",
+      "联网搜索",
+      "brave"
+    ]
+  },
+  {
+    "id": "preset.postgres",
+    "name": "Postgres",
+    "display_name": "PostgreSQL",
+    "description": "对指定 PostgreSQL 库执行只读 SQL 查询（需要连接串）",
+    "category": "数据库",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-postgres",
+      ""
+    ],
+    "env": {},
+    "requires_env": [],
+    "requires_arg": "数据库连接串 postgresql://user:pass@host:5432/db（作为第 3 个参数填入）",
+    "registry": "@modelcontextprotocol/server-postgres",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/postgres",
+    "keywords": [
+      "postgres",
+      "postgresql",
+      "数据库",
+      "database",
+      "sql",
+      "查询",
+      "query",
+      "表",
+      "报表"
+    ]
+  },
+  {
+    "id": "preset.slack",
+    "name": "Slack",
+    "display_name": "Slack",
+    "description": "频道列表、发消息、检索消息（需要 Slack Bot Token）",
+    "category": "开发协作",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-slack"
+    ],
+    "env": {
+      "SLACK_BOT_TOKEN": "",
+      "SLACK_TEAM_ID": ""
+    },
+    "requires_env": [
+      "SLACK_BOT_TOKEN",
+      "SLACK_TEAM_ID"
+    ],
+    "registry": "@modelcontextprotocol/server-slack",
+    "homepage": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack",
+    "keywords": [
+      "slack",
+      "消息",
+      "im",
+      "通知",
+      "频道",
+      "channel",
+      "群聊"
+    ]
   }
 ]
