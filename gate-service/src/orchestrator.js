@@ -8,7 +8,7 @@ import { llm } from './llm.js';
 import { unzip, sha256, packDraftDir, findSkillMd } from './pack.js';
 import matter from 'gray-matter';
 import fs from 'node:fs';
-import { getDraftBoundTools, recommendFromCatalog } from './mcp.js';
+import { getDraftBoundTools, recommendFromCatalogSemantic } from './mcp.js';
 import path from 'node:path';
 
 const BUILD_AGENT_URL = (process.env.BUILD_AGENT_URL || 'http://skill-build-agent:8300').replace(/\/+$/, '');
@@ -430,10 +430,12 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
       mcpBindings = meta?.mcp_bindings || [];
     }
 
-    // MCP 市场推荐：用户未携带确认结果时，自动匹配预置目录
+    // MCP 市场推荐：用户未携带确认结果时，语义匹配预置目录（LLM 失败回落关键词）
     if (!mcp_confirmed) {
-      const suggestions = recommendFromCatalog(message);
+      emit('phase', { name: 'MCP 工具匹配', status: 'running', detail: '语义匹配预置市场' });
+      const suggestions = await recommendFromCatalogSemantic(message);
       if (suggestions.length > 0) {
+        emit('phase', { name: 'MCP 工具匹配', status: 'done', detail: `匹配 ${suggestions.length} 个工具` });
         emit('card', { type: 'mcp_suggest', payload: { suggestions } });
         // 直接用候选继续创建流程（前端确认后可覆盖）
         const suggestedBindings = suggestions.map(s => ({
@@ -443,6 +445,8 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
           _preset: s, // 预置信息（前端用于一键注册）
         }));
         mcpBindings = [...mcpBindings, ...suggestedBindings];
+      } else {
+        emit('phase', { name: 'MCP 工具匹配', status: 'done', detail: '无需外部工具' });
       }
     } else {
       // 用户已从前端确认选择 → 合并到绑定

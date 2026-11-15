@@ -1,6 +1,7 @@
 // mcp.js — MCP 服务器注册表 + 工具探测客户端 + 预置市场目录
 // 支持 stdio / sse / streamable-http 三种传输
 import { saveJson, readJson } from './store.js';
+import { llm } from './llm.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +39,42 @@ export function recommendFromCatalog(message, maxResults = 5) {
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, maxResults).map(({ score, ...rest }) => rest);
+}
+
+// 语义匹配：LLM 理解任务语义后从预置目录挑选工具（比关键词命中更准）。
+// LLM 判定"无匹配"返回空数组（纯本地任务不硬塞工具）；LLM 失败/超时回落关键词兜底。
+export async function recommendFromCatalogSemantic(message, maxResults = 3) {
+  const catalog = getCatalog();
+  if (!catalog.length || !llm.configured) return recommendFromCatalog(message, maxResults);
+  try {
+    const listing = catalog.map(c => ({
+      id: c.id,
+      name: c.display_name || c.name,
+      description: c.description,
+      keywords: c.keywords,
+    }));
+    const data = await llm.chatJson(
+      [
+        {
+          role: 'system',
+          content:
+            '你是 MCP 工具推荐器。根据用户的技能任务描述，从候选工具列表中选出能提供任务所需数据或外部能力的工具（最多 ' + maxResults + ' 个）。\n' +
+            '判断标准：任务是否真的需要该工具提供的数据/能力（如实时行情、网页抓取、数据库、搜索）。\n' +
+            '纯本地文本处理类任务（总结、翻译、改写等）不需要外部工具，返回空数组。\n' +
+            '只输出 JSON：{"ids": ["候选工具id", ...]}',
+        },
+        { role: 'user', content: `任务：${message}\n\n候选工具：${JSON.stringify(listing)}` },
+      ],
+      { timeoutMs: 20_000 },
+    );
+    const ids = Array.isArray(data?.ids) ? data.ids : [];
+    return ids
+      .map(id => catalog.find(c => c.id === id))
+      .filter(Boolean)
+      .slice(0, maxResults);
+  } catch {
+    return recommendFromCatalog(message, maxResults); // LLM 失败 → 关键词兜底
+  }
 }
 
 // ── 注册表 CRUD ──────────────────────────────────────────────────
@@ -88,19 +125,20 @@ export function removeMcpServer(id) {
 
 const probeCache = new Map(); // serverId → { status, tools, error, probed_at }
 
-export async function probeMcpServer(id) {
-  const cached = probeCache.get(id);
-  if (cached && Date.now() - cached.probed_at < STATUS_TTL_MS) {
-    return cached;
+export async function probeMcpServer(id, opts = {}) {
+  if (!opts.force) {
+    const cached = probeCache.get(id);
+    if (cached && Date.now() - cached.probed_at < STATUS_TTL_MS) {
+      return cached;
+    }
   }
   const server = getMcpServer(id);
   if (!server) throw Object.assign(new Error(`MCP 服务器不存在：${id}`), { status: 404 });
-  if (!server.enabled) return { serverId: id, status: 'offline', tools: [], error: '服务器已禁用', probed_at: Date.now() };
+  if (!server.enabled) return { serverId: id, status: 'disabled', tools: [], error: '服务器已禁用', probed_at: Date.now() };
 
   let client = null;
   let transport = null;
   try {
-    // 动态导入 MCP SDK（延迟加载，未安装时不阻塞启动）
     const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
 
     if (server.transport === 'stdio') {
@@ -127,8 +165,7 @@ export async function probeMcpServer(id) {
     client = new Client({ name: 'gate-service', version: '0.1.0' }, { capabilities: {} });
     await client.connect(transport);
 
-    // 15s 超时
-    const timeout = setTimeout(() => { try { client.close(); } catch {} }, 15_000);
+    const timeout = setTimeout(() => { try { client.close(); } catch {} }, opts.listTimeoutMs ?? 15_000);
     const toolsResult = await client.listTools();
     clearTimeout(timeout);
 
@@ -148,6 +185,11 @@ export async function probeMcpServer(id) {
   } finally {
     if (client) { try { await client.close(); } catch {} }
   }
+}
+
+// 读缓存（不触发探测），供 mcp-market.js 的 serverHealth 使用
+export function probeState(id) {
+  return probeCache.get(id) || null;
 }
 
 export async function probeAllServers() {

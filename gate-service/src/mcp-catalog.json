@@ -322,5 +322,73 @@
       "channel",
       "群聊"
     ]
+  },
+  {
+    "id": "preset.yahoo-finance",
+    "name": "YahooFinance",
+    "display_name": "股票行情 Yahoo Finance",
+    "description": "全球股票实时行情：报价、历史K线、财报、分析师评级、ETF 与新闻（免费无需 API Key，覆盖美股/港股）",
+    "category": "金融数据",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "yahoo-finance-mcp-server"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "yahoo-finance-mcp-server",
+    "homepage": "https://www.npmjs.com/package/yahoo-finance-mcp-server",
+    "keywords": [
+      "股价",
+      "股票",
+      "行情",
+      "实时行情",
+      "美股",
+      "港股",
+      "证券",
+      "股市",
+      "stock",
+      "quote",
+      "finance",
+      "yahoo",
+      "etf",
+      "财报",
+      "k线",
+      "复权"
+    ]
+  },
+  {
+    "id": "preset.stock-cn",
+    "name": "StockMCP",
+    "display_name": "A股行情 Stock MCP",
+    "description": "A股/港股/美股实时行情、K线与技术指标（免费无需 API Key，A股数据源友好）",
+    "category": "金融数据",
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "stock-sdk-mcp"
+    ],
+    "env": {},
+    "requires_env": [],
+    "registry": "stock-sdk-mcp",
+    "homepage": "https://www.npmjs.com/package/stock-sdk-mcp",
+    "keywords": [
+      "a股",
+      "沪深",
+      "上证",
+      "深证",
+      "股价",
+      "股票",
+      "行情",
+      "实时行情",
+      "技术指标",
+      "k线",
+      "macd",
+      "均线",
+      "涨停",
+      "fin"
+    ]
   }
 ]
