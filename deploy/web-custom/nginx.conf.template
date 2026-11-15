@@ -1,7 +1,64 @@
 server_tokens off;
+
+# ── 登录门禁映射（map 在 http 层求值，规避 location 内 if/set 隐式 location 破坏 try_files）──
+# 已持有会话 Cookie（Java 端 SESSION，HttpOnly）视为已登录
+map $cookie_SESSION $skillhub_auth_ok {
+    default 0;
+    ~.+     1;
+}
+# 公开页面：登录/注册/找回密码/条款/隐私 + CLI 授权页 + 设备授权页 + 邀请页 + SPA 壳与静态资源
+# （/cli/auth /device /join 由 SPA 页面自行引导登录，避免 nginx 302 丢失 URL 上的授权参数/邀请码）
+map $uri $skillhub_public_uri {
+    default              0;
+    /index.html          1;
+    ~^/login($|[/?])     1;
+    ~^/register          1;
+    ~^/reset-password    1;
+    ~^/terms             1;
+    ~^/privacy           1;
+    ~^/cli/auth($|/)     1;
+    ~^/device($|/)       1;
+    ~^/join($|/)         1;
+    ~^/fonts/            1;
+    ~^/favicon\.svg      1;
+    ~^/mcp-nav\.js       1;
+    ~^/registry/         1;
+}
+# 组合判定：未登录 且 访问非公开页面 → 1（302 /login）
+map "$skillhub_auth_ok:$skillhub_public_uri" $skillhub_gate_redirect {
+    default 1;
+    "1:0"   0;
+    "1:1"   0;
+    "0:1"   0;
+}
+
+# ── API 门禁映射：完全匿名（无会话 Cookie 且无 Authorization）的 API 请求一律 401 ──
+# 登录用户（Session Cookie）与 CLI/Agent（Bearer Token）放行，由后端自行鉴权；
+# 匿名可达白名单：登录/注册/找回密码/设备授权流程、健康检查、CLI 注册表公开读契约
+map "$cookie_SESSION|$http_authorization" $skillhub_api_anon {
+    default 0;
+    "|"     1;
+}
+map $uri $skillhub_api_public_uri {
+    default            0;
+    ~^/api/v1/auth/    1;
+    ~^/api/v1/health   1;
+    ~^/api/v1/check     1;
+    ~^/api/cli/v1/     1;
+}
+map "$skillhub_api_anon:$skillhub_api_public_uri" $skillhub_api_gate_deny {
+    default 1;
+    "0:0"   0;
+    "0:1"   0;
+    "1:1"   0;
+}
+
 server {
     listen 80;
     server_name _;
+    # 302 等重定向一律用相对地址：浏览器保留当前 host:port，
+    # 避免非标准端口部署（如 :3001）跳登录时被 nginx $host 丢端口踢到 80
+    absolute_redirect off;
     resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
     set $skillhub_api_upstream "${SKILLHUB_API_UPSTREAM}";
     root /usr/share/nginx/html;
@@ -48,10 +105,23 @@ server {
 
     location / {
         add_header Cache-Control "no-cache, must-revalidate" always;
+
+        # ── 页面登录门禁：未持有会话 Cookie 且访问非公开页面 → 一律先登录 ──
+        # 单一 if 且仅 return（nginx 认可的安全用法），条件求值全部前置到 map
+        if ($skillhub_gate_redirect) {
+            return 302 /login;
+        }
+
         try_files $uri $uri/ /index.html;
     }
 
     location /api/ {
+        # ── API 登录门禁：完全匿名（无 Cookie 且无 Bearer）请求 401，不透传后端 ──
+        default_type application/json;
+        if ($skillhub_api_gate_deny) {
+            return 401 '{"code":401,"msg":"Login required"}';
+        }
+
         proxy_pass $skillhub_api_upstream;
         proxy_set_header Host $skillhub_forwarded_host;
         proxy_set_header Forwarded "";

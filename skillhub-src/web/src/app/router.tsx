@@ -261,12 +261,21 @@ const redirectAuthenticated = createRedirectAuthenticated(getCurrentUser)
 const landingRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
+  // 站点入口：未登录先进登录页；已登录直接落到技能首页，跳过营销落地页
+  beforeLoad: async () => {
+    const user = await getCurrentUser()
+    if (user) {
+      throw redirect({ to: '/skills' })
+    }
+    throw redirect({ to: '/login', search: { returnTo: '/' } })
+  },
   component: LandingPage,
 })
 
 const skillsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'skills',
+  beforeLoad: requireAuth,
   component: HomePage,
 })
 
@@ -305,6 +314,7 @@ const privacyRoute = createRoute({
 const searchRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'search',
+  beforeLoad: requireAuth,
   component: SearchPage,
   validateSearch: (search: Record<string, unknown>): { q: string; namespace?: string; label?: string; sort: string; page: number; starredOnly: boolean } => {
     return {
@@ -321,6 +331,7 @@ const searchRoute = createRoute({
 const githubSkillsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'github',
+  beforeLoad: requireAuth,
   component: GithubSkillsPage,
   validateSearch: (search: Record<string, unknown>): { q: string; sort: string; page: number } => ({
     q: normalizeSearchQuery(typeof search.q === 'string' ? search.q : ''),
@@ -332,12 +343,14 @@ const githubSkillsRoute = createRoute({
 const suitesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'suites',
+  beforeLoad: requireAuth,
   component: SuitesPage,
 })
 
 const suiteDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/suite/$namespace/$slug',
+  beforeLoad: requireAuth,
   validateSearch: (search: Record<string, unknown>): { version?: string } => ({
     version: typeof search.version === 'string' && search.version ? search.version : undefined,
   }),
@@ -367,6 +380,7 @@ const joinRoute = createRoute({
 const skillDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/space/$namespace/$slug',
+  beforeLoad: requireAuth,
   validateSearch: (search: Record<string, unknown>): { returnTo?: string; version?: string } => ({
     returnTo: typeof search.returnTo === 'string' && search.returnTo.startsWith('/') ? search.returnTo : undefined,
     version: typeof search.version === 'string' && search.version ? search.version : undefined,
@@ -377,6 +391,7 @@ const skillDetailRoute = createRoute({
 const skillVersionCompareRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/space/$namespace/$slug/compare',
+  beforeLoad: requireAuth,
   validateSearch: (search: Record<string, unknown>): { from: string; to: string } => ({
     from: typeof search.from === 'string' ? search.from : '',
     to: typeof search.to === 'string' ? search.to : '',

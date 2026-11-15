@@ -84,21 +84,20 @@ export function Layout() {
     dismissOpenOverlays()
   }, [pathname])
 
+  // 全站统一的一级导航：所有业务页面均需登录，菜单不再按登录态增减
   const navItems: Array<{
     label: string
     to: string
     analyticsId?: string
     exact?: boolean
-    auth?: boolean
   }> = [
-    { label: t('nav.landing'), to: '/', analyticsId: 'navigation.home.open', exact: true },
-    { label: t('nav.build'), to: '/build', analyticsId: 'navigation.build.open', auth: true },
-    { label: t('nav.publish'), to: '/dashboard/publish', analyticsId: 'skill.publish.open', auth: true },
+    { label: t('nav.build'), to: '/build', analyticsId: 'navigation.build.open' },
+    { label: t('nav.publish'), to: '/dashboard/publish', analyticsId: 'skill.publish.open' },
     { label: t('nav.marketplace'), to: '/search', analyticsId: 'navigation.skills.open' },
     { label: t('nav.githubSkills'), to: '/github', analyticsId: 'navigation.github.open' },
     { label: t('nav.suites'), to: '/suites', analyticsId: 'navigation.suites.open' },
-    { label: t('nav.applications'), to: '/applications', analyticsId: 'navigation.applications.open', auth: true },
-    { label: t('nav.dashboard'), to: '/dashboard', analyticsId: 'navigation.dashboard.open', auth: true },
+    { label: t('nav.applications'), to: '/applications', analyticsId: 'navigation.applications.open' },
+    { label: t('nav.dashboard'), to: '/dashboard', analyticsId: 'navigation.dashboard.open' },
   ]
 
   const isActive = (to: string, exact?: boolean) => {
@@ -131,7 +130,7 @@ export function Layout() {
       >
         <div className={isSplitAuthRoute ? 'flex items-center' : APP_HEADER_CONTENT_CLASS_NAME}>
         {!isSplitAuthRoute ? (
-          <Link data-analytics-id="navigation.home.open" to="/" className="text-xl font-semibold tracking-tight flex-shrink-0" style={{ color: 'hsl(var(--foreground))' }}>
+          <Link data-analytics-id="navigation.home.open" to="/skills" className="text-xl font-semibold tracking-tight flex-shrink-0" style={{ color: 'hsl(var(--foreground))' }}>
             SkillHub
           </Link>
         ) : null}
@@ -140,7 +139,6 @@ export function Layout() {
         {!isAuthEntryRoute ? (
           <nav className="hidden xl:flex items-center gap-5 text-[15px] font-normal" style={{ color: 'hsl(var(--text-secondary))' }}>
             {navItems.map((item) => {
-              if (item.auth && !user) return null
               const active = isActive(item.to, item.exact)
 
               return (
@@ -196,7 +194,6 @@ export function Layout() {
         <div className="xl:hidden sticky top-[57px] z-40 border-b border-border bg-background/95 backdrop-blur-xl">
           <nav className={`${APP_FRAME_CLASS_NAME} flex flex-col gap-1 py-3`}>
             {navItems.map((item) => {
-              if (item.auth && !user) return null
               const active = isActive(item.to, item.exact)
               return (
                 <Link data-analytics-id={item.analyticsId}
