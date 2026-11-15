@@ -1,7 +1,7 @@
 import { startTransition, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { Loader2, Package, Search as SearchIcon, Wrench } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import type { SkillSummary } from '@/api/types'
 import { useAuth } from '@/features/auth/use-auth'
 import { SearchBar } from '@/features/search/search-bar'
@@ -16,7 +16,6 @@ import { toRouterPath } from '@/shared/lib/base-path'
 import { formatNamespaceSearchInput, normalizeSearchQuery, parseNamespaceSearchInput } from '@/shared/lib/search-query'
 import { Button } from '@/shared/ui/button'
 import { APP_SHELL_PAGE_CLASS_NAME } from '@/app/page-shell-style'
-import { getMcpCatalog, type McpCatalogItem } from '@/api/gateClient'
 
 const PAGE_SIZE = 12
 
@@ -205,12 +204,7 @@ export function SearchPage() {
 
   return (
     <div className={APP_SHELL_PAGE_CLASS_NAME}>
-      <div className="flex gap-6">
-        {/* MCP 市场侧栏 */}
-        <McpMarketSidebar />
-
-        {/* 技能市场主区域 */}
-        <div className="min-w-0 flex-1 space-y-4">
+      <div className="space-y-4">
           {/* Search Bar */}
           <div className="max-w-3xl mx-auto">
             <SearchBar analyticsId="search.query.submit"
@@ -330,105 +324,7 @@ export function SearchPage() {
           }
         />
       )}
-        </div>
       </div>
     </div>
-  )
-}
-
-// ── MCP 市场侧栏 ──────────────────────────────────────────────────
-
-function McpMarketSidebar() {
-  const [catalog, setCatalog] = useState<McpCatalogItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-
-  useEffect(() => {
-    getMcpCatalog()
-      .then(items => { setCatalog(items); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
-
-  const categories = [...new Set(catalog.map(c => c.category))]
-  const filtered = catalog.filter(item => {
-    const q = filter.toLowerCase()
-    const matchesFilter = !q ||
-      item.name.toLowerCase().includes(q) ||
-      item.description.toLowerCase().includes(q) ||
-      item.keywords.some(k => k.includes(q))
-    const matchesCategory = !selectedCategory || item.category === selectedCategory
-    return matchesFilter && matchesCategory
-  })
-
-  return (
-    <aside className="hidden w-64 shrink-0 lg:block">
-      <div className="sticky top-4 space-y-3">
-        {/* 标题 */}
-        <div className="flex items-center gap-2">
-          <Wrench className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold">MCP 市场</span>
-        </div>
-
-        {/* 搜索框 */}
-        <div className="relative">
-          <SearchIcon className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            className="w-full rounded-md border bg-background px-7 py-1.5 text-xs"
-            placeholder="搜索 MCP 工具..."
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-          />
-        </div>
-
-        {/* 分类标签 */}
-        <div className="flex flex-wrap gap-1">
-          <button
-            className={`rounded px-1.5 py-0.5 text-[10px] ${!selectedCategory ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-            onClick={() => setSelectedCategory(null)}
-          >全部</button>
-          {categories.map(cat => (
-            <button
-              key={cat}
-              className={`rounded px-1.5 py-0.5 text-[10px] ${selectedCategory === cat ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-              onClick={() => setSelectedCategory(selectedCategory === cat ? null : cat)}
-            >{cat}</button>
-          ))}
-        </div>
-
-        {/* 工具列表 */}
-        <div className="max-h-[60vh] space-y-1.5 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> 加载中...
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="text-xs text-muted-foreground">暂无匹配工具</p>
-          ) : filtered.map(item => (
-            <div key={item.id} className="rounded-md border bg-card p-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{item.display_name || item.name}</span>
-                <span className="rounded bg-muted px-1 text-[9px] text-muted-foreground">{item.transport}</span>
-              </div>
-              <p className="mt-0.5 line-clamp-2 text-muted-foreground">{item.description}</p>
-              <div className="mt-0.5 flex flex-wrap gap-0.5">
-                {item.keywords.slice(0, 3).map(kw => (
-                  <span key={kw} className="text-[9px] text-muted-foreground/60">#{kw}</span>
-                ))}
-                {item.requires_env?.map(env => (
-                  <span key={env} className="rounded bg-amber-100 px-1 text-[9px] text-amber-700 dark:bg-amber-900 dark:text-amber-300">需 {env}</span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* 底部提示 */}
-        <div className="flex items-center gap-1.5 rounded-md border border-dashed p-2 text-[10px] text-muted-foreground">
-          <Package className="h-3 w-3 shrink-0" />
-          <span>构建技能时自动推荐匹配工具</span>
-        </div>
-      </div>
-    </aside>
   )
 }

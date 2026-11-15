@@ -22,10 +22,27 @@
     "mySkills": "My Skills",
     "mySuites": "My Suites",
     "build": "Skill Builder",
-    "publish": "Publish",
+    "publish": "Publish Skills",
+    "mcpMarket": "MCP Market",
     "suites": "Skill Suites",
     "applications": "Skill Apps",
     "login": "Login"
+  },
+  "mcpMarket": {
+    "title": "MCP Market",
+    "subtitle": "Curated MCP tool catalog, auto-recommended and bound when building skills",
+    "searchPlaceholder": "Search MCP tools...",
+    "allCategories": "All",
+    "loading": "Loading...",
+    "empty": "No matching tools",
+    "toolCount": "{{count}} tools",
+    "requiresEnv": "env: {{env}}",
+    "requiresArg": "arg: {{arg}}",
+    "registry": "Registry",
+    "homepage": "Homepage",
+    "category": "Category",
+    "hint": "During skill building conversations, matching MCP tools are recommended automatically based on task semantics",
+    "loadFailed": "Failed to load catalog, please check the gateway service"
   },
   "githubCatalog": {
     "title": "Open-source Skills",

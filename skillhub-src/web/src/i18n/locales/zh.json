@@ -22,10 +22,27 @@
     "mySkills": "我的技能",
     "mySuites": "我的套件",
     "build": "技能构建",
-    "publish": "发布",
+    "publish": "技能发布",
+    "mcpMarket": "MCP市场",
     "suites": "技能套件",
     "applications": "技能应用",
     "login": "登录"
+  },
+  "mcpMarket": {
+    "title": "MCP市场",
+    "subtitle": "预置的 MCP 工具目录，构建技能时可自动推荐并绑定",
+    "searchPlaceholder": "搜索 MCP 工具...",
+    "allCategories": "全部",
+    "loading": "加载中...",
+    "empty": "暂无匹配工具",
+    "toolCount": "共 {{count}} 个工具",
+    "requiresEnv": "需 {{env}}",
+    "requiresArg": "需参数 {{arg}}",
+    "registry": "仓库",
+    "homepage": "主页",
+    "category": "分类",
+    "hint": "在「技能构建」对话时，系统会根据任务语义自动推荐匹配的 MCP 工具",
+    "loadFailed": "目录加载失败，请检查网关服务"
   },
   "githubCatalog": {
     "title": "开源技能",

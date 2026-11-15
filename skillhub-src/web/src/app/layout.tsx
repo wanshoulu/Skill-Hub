@@ -94,6 +94,7 @@ export function Layout() {
     { label: t('nav.build'), to: '/build', analyticsId: 'navigation.build.open' },
     { label: t('nav.publish'), to: '/dashboard/publish', analyticsId: 'skill.publish.open' },
     { label: t('nav.marketplace'), to: '/search', analyticsId: 'navigation.skills.open' },
+    { label: t('nav.mcpMarket'), to: '/mcp-market', analyticsId: 'navigation.mcp.open' },
     { label: t('nav.githubSkills'), to: '/github', analyticsId: 'navigation.github.open' },
     { label: t('nav.suites'), to: '/suites', analyticsId: 'navigation.suites.open' },
     { label: t('nav.applications'), to: '/applications', analyticsId: 'navigation.applications.open' },

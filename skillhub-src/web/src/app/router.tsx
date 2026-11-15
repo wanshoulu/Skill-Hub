@@ -100,6 +100,7 @@ const RegisterPage = createLazyRouteComponent(() => import('@/pages/register'), 
 const ResetPasswordPage = createLazyRouteComponent(() => import('@/pages/reset-password'), 'ResetPasswordPage')
 const PrivacyPolicyPage = createLazyRouteComponent(() => import('@/pages/privacy'), 'PrivacyPolicyPage')
 const SearchPage = createLazyRouteComponent(() => import('@/pages/search'), 'SearchPage')
+const McpMarketPage = createLazyRouteComponent(() => import('@/pages/mcp-market'), 'McpMarketPage')
 const GithubSkillsPage = createLazyRouteComponent(() => import('@/pages/github-skills'), 'GithubSkillsPage')
 const SuitesPage = createLazyRouteComponent(() => import('@/pages/suites'), 'SuitesPage')
 const SuiteDetailPage = createLazyRouteComponent(() => import('@/pages/suite-detail'), 'SuiteDetailPage')
@@ -326,6 +327,13 @@ const searchRoute = createRoute({
       starredOnly: search.starredOnly === true || search.starredOnly === 'true',
     }
   },
+})
+
+const mcpMarketRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'mcp-market',
+  beforeLoad: requireAuth,
+  component: McpMarketPage,
 })
 
 const githubSkillsRoute = createRoute({
@@ -823,6 +831,7 @@ const routeTree = rootRoute.addChildren([
   resetPasswordRoute,
   privacyRoute,
   searchRoute,
+  mcpMarketRoute,
   githubSkillsRoute,
   suitesRoute,
   suiteDetailRoute,
