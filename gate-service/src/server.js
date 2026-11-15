@@ -13,8 +13,16 @@ import { beginGate, executeGate, beginEval, executeEval, startEvolve, adoptJob, 
 import { llm } from './llm.js';
 import {
   listMcpServers, addMcpServer, updateMcpServer, removeMcpServer,
-  probeMcpServer, probeAllServers, invalidateProbe, getCatalog,
+  probeMcpServer, probeAllServers, invalidateProbe,
 } from './mcp.js';
+import {
+  catalogView, serverHealth, installMany, uninstallCatalog, callMcpTool, checkDeps,
+  declarationsFromBindings,
+} from './mcp-market.js';
+import {
+  draftBindings, mergeBindings, normalizeBindings, effectiveDeclarations,
+  syncSkillMd, adoptRecommendation,
+} from './mcp-flow.js';
 
 const PORT = Number(process.env.PORT || 3002);
 const VERSION = '0.1.0';
@@ -124,7 +132,15 @@ async function writeDraft(id, body) {
   if (body.mcp_bindings !== undefined) {
     meta.mcp_bindings = body.mcp_bindings;
   }
+  // 调用方没带绑定、草稿又是新建的：接管创建期从 MCP 市场自动装配的结果，
+  // 否则"对话里推荐并安装了工具 → 保存草稿 → 依赖信息凭空丢失"
+  if (!meta.mcp_bindings?.length) {
+    meta.mcp_bindings = adoptRecommendation(meta.name) || [];
+  }
+  meta.mcp_bindings = normalizeBindings(meta.mcp_bindings);
   saveJson(`drafts/${id}/meta.json`, meta);
+  // 绑定确定性回写进 SKILL.md，让草稿本身就是自描述的可发布产物
+  syncSkillMd(draftDir(id), meta.mcp_bindings);
   return meta;
 }
 
@@ -180,9 +196,9 @@ async function route(req, res) {
     return sse.close();
   }
 
-  // ── MCP 预置市场目录 ────────────────────────────────────────────
+  // ── MCP 预置市场目录（带安装态与健康度）─────────────────────────
   if (p === '/v1/mcp/catalog' && method === 'GET') {
-    return ok(res, getCatalog());
+    return ok(res, catalogView());
   }
 
   // ── MCP 服务器注册表 ──────────────────────────────────────────────
@@ -221,8 +237,107 @@ async function route(req, res) {
   }
   const mcpProbeM = p.match(/^\/v1\/mcp\/servers\/(mcp_[A-Za-z0-9_-]+)\/tools$/);
   if (mcpProbeM && method === 'GET') {
-    try { return ok(res, await probeMcpServer(mcpProbeM[1])); }
+    try { return ok(res, await probeMcpServer(mcpProbeM[1], { force: url.searchParams.get('refresh') === '1' })); }
     catch (e) { return fail(res, e.status || 500, String(e.message || e)); }
+  }
+
+  // ── MCP 市场：安装 / 卸载 / 总览 / 试跑 / 技能依赖体检 ─────────────
+  // 市场页面本身由 web 层静态提供（/mcp-market.html），这里只做数据与操作接口
+  if (p === '/v1/mcp/overview' && method === 'GET') {
+    const catalog = catalogView();
+    const servers = listMcpServers().map((s) => ({ ...s, health: serverHealth(s) }));
+    return ok(res, {
+      catalog,
+      servers,
+      stats: {
+        catalog_total: catalog.length,
+        catalog_installed: catalog.filter((c) => c.installed).length,
+        catalog_online: catalog.filter((c) => c.state === 'online').length,
+        catalog_needs_config: catalog.filter((c) => c.state === 'needs_config').length,
+        servers_total: servers.length,
+        servers_online: servers.filter((s) => s.health.state === 'online').length,
+        tools_total: servers.reduce((n, s) => n + (s.health.tools || 0), 0),
+        warming: servers.filter((s) => s.health.state === 'probing').map((s) => s.name),
+      },
+    });
+  }
+  if (p === '/v1/mcp/catalog/install' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    const items = body.ids?.length ? body.ids.map((id) => ({ id, env: body.env, args: body.args }))
+      : body.id ? [{ id: body.id, env: body.env, args: body.args }] : [];
+    if (!items.length) return fail(res, 400, '需要 id 或 ids');
+    return ok(res, installMany(items));
+  }
+  if (p === '/v1/mcp/catalog/uninstall' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    if (!body.id) return fail(res, 400, '需要 id');
+    return ok(res, uninstallCatalog(body.id));
+  }
+  if (p === '/v1/mcp/call' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    if (!body.server_id || !body.tool) return fail(res, 400, '需要 server_id 与 tool');
+    try {
+      return ok(res, await callMcpTool(body.server_id, String(body.tool), body.arguments || {}, { timeoutMs: Number(body.timeout_ms) || 45_000 }));
+    } catch (e) {
+      return fail(res, e.status || 500, String(e.message || e));
+    }
+  }
+  // 技能依赖体检：草稿（draft_id）或直接给 markdown / bindings
+  if (p === '/v1/mcp/deps' && (method === 'GET' || method === 'POST')) {
+    let draftId = url.searchParams.get('draft_id') || null;
+    let markdown = '', bindings = [];
+    if (method === 'POST') {
+      let body;
+      try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+      catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+      draftId = body.draft_id || draftId;
+      markdown = String(body.markdown || '');
+      bindings = Array.isArray(body.bindings) ? body.bindings : [];
+    }
+    if (draftId) {
+      const dir = draftDir(draftId);
+      if (!fs.existsSync(path.join(dir, 'SKILL.md'))) return fail(res, 404, `草稿不存在：${draftId}`);
+      if (!markdown) markdown = fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+      if (!bindings.length) bindings = draftBindings(draftId);
+    }
+    const decls = effectiveDeclarations({ markdown, bindings: normalizeBindings(bindings) });
+    const probe = url.searchParams.get('probe') !== '0';
+    return ok(res, { declarations: decls, ...(await checkDeps(decls, { probe })) });
+  }
+  // 一键补齐：把体检发现「缺失但市场里有」的服务器装进注册表
+  if (p === '/v1/mcp/deps/fix' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    const draftId = body.draft_id || null;
+    let markdown = String(body.markdown || ''), bindings = normalizeBindings(body.bindings || []);
+    if (draftId) {
+      const dir = draftDir(draftId);
+      if (!fs.existsSync(path.join(dir, 'SKILL.md'))) return fail(res, 404, `草稿不存在：${draftId}`);
+      markdown = markdown || fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+      bindings = bindings.length ? bindings : draftBindings(draftId);
+    }
+    const decls = effectiveDeclarations({ markdown, bindings });
+    if (!decls.length) return ok(res, { installed: [], message: '该技能没有 MCP 依赖' });
+    const deps = await checkDeps(decls, { probe: false });
+    const result = installMany(deps.summary.auto_installable.map((id) => ({ id })));
+    // 补齐后的服务器名写回草稿绑定，SKILL.md 同步声明
+    if (draftId && result.installed.length) {
+      const merged = mergeBindings(draftId, result.installed.map((r) => ({ server_id: r.server.id, server_name: r.server.name, tool_names: [] })));
+      syncSkillMd(draftDir(draftId), merged.bindings);
+    }
+    return ok(res, {
+      ...result,
+      missing_before: deps.summary.missing,
+      auto_installable: deps.summary.auto_installable,
+      not_in_catalog: deps.servers.filter((s) => s.state === 'missing' && !deps.summary.auto_installable.length).map((s) => s.server),
+    });
   }
 
   // ── 草稿 ──
@@ -278,14 +393,19 @@ async function route(req, res) {
         fs.mkdirSync(histDir, { recursive: true });
         fs.writeFileSync(path.join(histDir, `${Date.now()}-SKILL.md`), backupBuf);
       }
-      // 如果请求体包含 mcp_bindings，更新 meta
-      const meta = readJson(`drafts/${id}/meta.json`);
-      if (meta) {
+      // 如果请求体包含 mcp_bindings，更新 meta；writeDraftTo 刚重写过 SKILL.md，
+      // 这里必须再同步一次声明，否则编辑草稿就把 MCP 依赖抹掉了
+      const newMeta = readJson(`drafts/${id}/meta.json`);
+      if (newMeta) {
         if (body.mcp_bindings !== undefined) {
-          meta.mcp_bindings = body.mcp_bindings;
+          newMeta.mcp_bindings = normalizeBindings(body.mcp_bindings);
+        } else if (!newMeta.mcp_bindings?.length) {
+          newMeta.mcp_bindings = normalizeBindings(meta.mcp_bindings || []);
         }
-        meta.updated_at = Date.now();
-        saveJson(`drafts/${id}/meta.json`, meta);
+        if (meta.created_at) newMeta.created_at = meta.created_at;
+        newMeta.updated_at = Date.now();
+        saveJson(`drafts/${id}/meta.json`, newMeta);
+        syncSkillMd(dir, newMeta.mcp_bindings || []);
       }
       return ok(res, draftView(readJson(`drafts/${id}/meta.json`)));
     }
@@ -294,7 +414,10 @@ async function route(req, res) {
       return ok(res, { deleted: id });
     }
     if (method === 'POST' && draftM[2]) {
-      const zip = packDraftDir(draftDir(id));
+      // 导出的 zip 与 gate 打包一致：把绑定确定性写入 SKILL.md 的 mcp_tools
+      const zip = packDraftDir(draftDir(id), {
+        mcpDeclarations: declarationsFromBindings(draftBindings(id)),
+      });
       res.writeHead(200, {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${meta.name}.zip"`,

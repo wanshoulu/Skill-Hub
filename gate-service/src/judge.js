@@ -16,7 +16,7 @@ export async function judgeTrigger(skillDesc, input) {
     },
   ], { temperature: 0, maxTokens: 200, timeoutMs: 30_000 });
   return {
-    trigger: data.trigger === true,
+    trigger: Boolean(data.trigger),
     confidence: Number(data.confidence ?? 0.5),
     reason: String(data.reason || ''),
   };

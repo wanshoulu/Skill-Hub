@@ -55,7 +55,15 @@ class RegistryConfig:
     auto_install: str = os.getenv("AUTO_INSTALL_SKILLS", "")
 
 
+@dataclass
+class GateConfig:
+    """gate-service 网关（MCP 注册表来源）；置空 GATE_BASE_URL 关闭 MCP 接入。"""
+    base_url: str = os.getenv("GATE_BASE_URL", "http://gate-service:3002").rstrip("/")
+    timeout: float = _env_float("GATE_TIMEOUT", 10.0)
+
+
 llm_config = LLMConfig()
 server_config = ServerConfig()
 storage_config = StorageConfig()
 registry_config = RegistryConfig()
+gate_config = GateConfig()

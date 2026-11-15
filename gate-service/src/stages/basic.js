@@ -247,8 +247,8 @@ export function runBasic({ name, files }) {
       const sample = confusableChars ? [...new Set(confusableChars.map((c) => c.charCodeAt(0).toString(16)))].slice(0, 5) : [];
       injFindings.push({ level: 'warn', rule: 'confusable-chars', message: `检测到 ${confusableChars?.length || 0} 个 Unicode 同形/混淆字符（U+${sample.join(', U+')}），可能用于伪装指令`, file: f.path });
     }
-    // Unicode 标签块（U+E0000-E007F ASCII 走私）
-    const tagBlocks = f.text.match(/[\uE0000-\uE007F]/g);
+    // Unicode 标签块（U+E0000-E007F ASCII 走私）—— \u{...} 需要 u flag
+    const tagBlocks = f.text.match(/[\u{E0000}-\u{E007F}]/gu);
     if (tagBlocks?.length) {
       injFindings.push({ level: 'fail', rule: 'unicode-tag-block', message: `检测到 ${tagBlocks.length} 个 Unicode 标签块字符（ASCII 走私）`, file: f.path });
     }

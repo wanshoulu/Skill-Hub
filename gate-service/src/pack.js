@@ -2,6 +2,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import AdmZip from 'adm-zip';
+import { injectMcpTools } from './mcp-skillmd.js';
 
 // 归档安全限制（参考 Cisco Skill Scanner 阈值）
 const MAX_FILES = 500;
@@ -82,7 +83,9 @@ export function findSkillMd(files) {
 }
 
 // 草稿目录 → zip buffer（drafts/:id/zip 与 evidence 打包用）
-export function packDraftDir(dir) {
+// mcpDeclarations：网关侧确认的 MCP 绑定，打包时确定性写进 SKILL.md，
+// 使「发布产物的声明」与「网关登记的工具」永远一致（不依赖模型是否记得写）。
+export function packDraftDir(dir, { mcpDeclarations = null } = {}) {
   const zip = new AdmZip();
   const addDir = (d, base) => {
     for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
@@ -93,7 +96,12 @@ export function packDraftDir(dir) {
       if (entry.isDirectory()) {
         addDir(p, rel);
       } else {
-        zip.addFile(rel, fs.readFileSync(p));
+        let buf = fs.readFileSync(p);
+        if (mcpDeclarations?.length && rel === 'SKILL.md') {
+          const r = injectMcpTools(buf.toString('utf8'), mcpDeclarations);
+          if (r.changed) buf = Buffer.from(r.markdown, 'utf8');
+        }
+        zip.addFile(rel, buf);
       }
     }
   };

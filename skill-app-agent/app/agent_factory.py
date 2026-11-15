@@ -17,6 +17,7 @@ from openjiuwen.core.sys_operation import LocalWorkConfig, OperationMode, SysOpe
 from openjiuwen.harness import Workspace, create_deep_agent
 
 from .config import llm_config, server_config, storage_config
+from .mcp_client import build_mcp_tools
 from .rails import AppEventRail
 from .tools import APP_TOOLS
 
@@ -227,9 +228,19 @@ class AgentManager:
         await _ensure_skills_copy(ws_dir, skills_root)
         _ensure_sysop_sandbox(card, skills_root)
 
-        # 自定义工具 + 内置 skill_tool（技能加载，不放行会被 tiered_policy 拒绝）
+        # MCP 工具：技能声明 mcp_tools → gate 注册表解析 → openjiuwen 原生客户端接入。
+        # 失败隔离：注册表不可达或连接失败时按无 MCP 处理，不阻断 agent 构建
+        mcp_tools: list = []
+        try:
+            mcp_result = await build_mcp_tools()
+            mcp_tools = mcp_result.tools
+        except Exception as e:  # noqa: BLE001
+            logger.warning("MCP 工具构建失败（按无 MCP 处理）: %s", e)
+
+        # 自定义工具 + MCP 工具 + 内置 skill_tool（技能加载，不放行会被 tiered_policy 拒绝）
         # + openjiuwen 任务规划内置工具
-        tool_permissions = {t.card.name: "allow" for t in APP_TOOLS}
+        tools = [*APP_TOOLS, *mcp_tools]
+        tool_permissions = {t.card.name: "allow" for t in tools}
         tool_permissions["skill_tool"] = "allow"
         for todo_tool in ("todo_create", "todo_get", "todo_list", "todo_modify"):
             tool_permissions[todo_tool] = "allow"
@@ -256,12 +267,19 @@ class AgentManager:
             },
         }
 
+        system_prompt = _SYSTEM_PROMPT
+        if mcp_tools:
+            system_prompt += (
+                f"\n6. 当前已接入 {len(mcp_tools)} 个 MCP 工具（名称以 mcp_ 开头，格式 mcp_<服务器>_<工具>）。"
+                "技能说明中声明的 mcp_tools 已映射为这些工具，按技能说明与工具描述真实调用，如实反馈调用结果，禁止编造。"
+            )
+
         return create_deep_agent(
             model=model,
             card=card,
             workspace=workspace,
-            system_prompt=_SYSTEM_PROMPT,
-            tools=APP_TOOLS,
+            system_prompt=system_prompt,
+            tools=tools,
             skills=[str(skills_root)],
             rails=[self._rail],
             enable_task_loop=True,

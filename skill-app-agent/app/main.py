@@ -24,7 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from openjiuwen.harness.deep_agent import Session
 
-from . import skill_installer
+from . import mcp_client, skill_installer
 from .agent_factory import manager
 from .config import llm_config, registry_config, server_config
 from .rails import current_emitter
@@ -120,6 +120,12 @@ async def get_agent_profile(_: None = Depends(require_auth)):
         "skills": skill_installer.list_installed(),
         "sessions": len(_sessions),
     }
+
+
+@app.get("/v1/mcp/status")
+async def mcp_status(_: None = Depends(require_auth)):
+    """MCP 接入状态：各技能 mcp_tools 声明 + 最近一次构建（连接/工具列表）报告。"""
+    return mcp_client.last_status()
 
 
 @app.get("/v1/skills/registry")
