@@ -89,9 +89,15 @@ export function getMcpServer(id) {
 
 export function addMcpServer(config) {
   const servers = listMcpServers();
+  const name = (config.name || '').trim();
+  if (!name) throw Object.assign(new Error('需要服务器名称'), { status: 400 });
+  // 重名校验：技能按 server 名引用配置，重名会让 agent 侧解析到"最后一条"，必须拒绝
+  if (servers.some(s => s.name === name)) {
+    throw Object.assign(new Error(`MCP 服务器名称已存在：${name}`), { status: 409 });
+  }
   const server = {
     id: `mcp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    name: config.name,
+    name,
     transport: config.transport || 'stdio',
     command: config.command || undefined,
     args: config.args || [],
@@ -107,11 +113,50 @@ export function addMcpServer(config) {
   return server;
 }
 
+const MCP_TRANSPORTS = new Set(['stdio', 'sse', 'streamable-http']);
+
+// 校验合并后的服务器配置：transport 枚举 + stdio 需 command / 远程需合法 http(s) url
+function validateServerConfig(cfg) {
+  const transport = cfg.transport || 'stdio';
+  if (!MCP_TRANSPORTS.has(transport)) {
+    throw Object.assign(new Error(`不支持的传输类型：${transport}（仅支持 stdio / sse / streamable-http）`), { status: 400 });
+  }
+  if (transport === 'stdio') {
+    if (!cfg.command || !String(cfg.command).trim()) {
+      throw Object.assign(new Error('stdio 传输需要 command'), { status: 400 });
+    }
+  } else {
+    let url;
+    try { url = new URL(cfg.url); } catch {
+      throw Object.assign(new Error('远程传输需要合法的 http(s) url'), { status: 400 });
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw Object.assign(new Error('url 仅支持 http/https 协议'), { status: 400 });
+    }
+  }
+  for (const k of ['args', 'env', 'headers']) {
+    if (cfg[k] === undefined || cfg[k] === null) continue;
+    if (k === 'args' ? !Array.isArray(cfg[k]) : typeof cfg[k] !== 'object' || Array.isArray(cfg[k])) {
+      throw Object.assign(new Error(`字段 ${k} 类型不合法`), { status: 400 });
+    }
+  }
+}
+
 export function updateMcpServer(id, patch) {
   const servers = listMcpServers();
   const idx = servers.findIndex(s => s.id === id);
   if (idx < 0) throw Object.assign(new Error(`MCP 服务器不存在：${id}`), { status: 404 });
-  servers[idx] = { ...servers[idx], ...patch, id, updated_at: Date.now() };
+  // 字段白名单：name 不可改（技能按名引用，改了会让引用悬空）；id/created_at 系统管理
+  const cleanPatch = {};
+  for (const k of ['transport', 'command', 'args', 'env', 'url', 'headers', 'enabled']) {
+    if (k in patch) cleanPatch[k] = patch[k];
+  }
+  // 合并现有配置后整体校验（兼容只改 enabled 的部分更新），再按 transport 清掉无关字段残留
+  const merged = { ...servers[idx], ...cleanPatch };
+  validateServerConfig(merged);
+  if (merged.transport === 'stdio') { merged.url = undefined; merged.headers = {}; }
+  else { merged.command = undefined; merged.args = []; }
+  servers[idx] = { ...merged, id, updated_at: Date.now() };
   saveJson(REGISTRY_PATH, servers);
   return servers[idx];
 }
@@ -124,6 +169,20 @@ export function removeMcpServer(id) {
 // ── 工具探测（带缓存）────────────────────────────────────────────
 
 const probeCache = new Map(); // serverId → { status, tools, error, probed_at }
+
+// 探测超时：connect 与 listTools 各 60s，与 agent 侧 CONNECT_TIMEOUT(60s) 对齐。
+// npx 类 stdio 服务器首次冷启动要下载包，15s 必然误报；connect 不设超时则探测请求会无限挂起
+const PROBE_CONNECT_TIMEOUT_MS = 60_000;
+const PROBE_LIST_TIMEOUT_MS = 60_000;
+
+// 给 MCP SDK 的 promise 套超时（超时后由 finally 统一 close，避免子进程/连接泄漏）
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 export async function probeMcpServer(id, opts = {}) {
   if (!opts.force) {
@@ -163,11 +222,13 @@ export async function probeMcpServer(id, opts = {}) {
     }
 
     client = new Client({ name: 'gate-service', version: '0.1.0' }, { capabilities: {} });
-    await client.connect(transport);
+    await withTimeout(client.connect(transport), PROBE_CONNECT_TIMEOUT_MS, `连接超时（${PROBE_CONNECT_TIMEOUT_MS / 1000}s）：服务器未响应 initialize`);
 
-    const timeout = setTimeout(() => { try { client.close(); } catch {} }, opts.listTimeoutMs ?? 15_000);
-    const toolsResult = await client.listTools();
-    clearTimeout(timeout);
+    const toolsResult = await withTimeout(
+      client.listTools(),
+      opts.listTimeoutMs ?? PROBE_LIST_TIMEOUT_MS,
+      `工具探测超时（${(opts.listTimeoutMs ?? PROBE_LIST_TIMEOUT_MS) / 1000}s）：stdio 类服务器首次冷启动较慢，可稍后重试`,
+    );
 
     const tools = (toolsResult.tools || []).map(t => ({
       name: t.name,
@@ -194,13 +255,13 @@ export function probeState(id) {
 
 export async function probeAllServers() {
   const servers = listMcpServers();
-  if (!servers.length) return [];
-  const results = await Promise.allSettled(
-    servers.filter(s => s.enabled).map(s => probeMcpServer(s.id))
-  );
+  const targets = servers.filter(s => s.enabled);
+  if (!targets.length) return [];
+  const results = await Promise.allSettled(targets.map(s => probeMcpServer(s.id)));
+  // 注意用 targets 的下标回填：results 与 filter 后的数组一一对应，用 servers 会错位
   return results.map((r, i) => {
     if (r.status === 'fulfilled') return r.value;
-    return { serverId: servers[i].id, status: 'error', tools: [], error: String(r.reason), probed_at: Date.now() };
+    return { serverId: targets[i].id, status: 'error', tools: [], error: String(r.reason), probed_at: Date.now() };
   });
 }
 

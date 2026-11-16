@@ -35,7 +35,8 @@ from .config import gate_config, server_config, storage_config
 
 logger = logging.getLogger("skill-app-agent.mcp")
 
-CONNECT_TIMEOUT = 20.0
+# npx 冷启动（首次下载包）可能远超 20s，与 gate 侧 stdio 冷启动预算（180s）留出余量
+CONNECT_TIMEOUT = 60.0
 LIST_TIMEOUT = 15.0
 
 _NAME_SANITIZE = re.compile(r"[^a-z0-9]+")

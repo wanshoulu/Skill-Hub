@@ -274,7 +274,7 @@ export interface McpToolInfo {
 
 export interface McpServerStatus {
   serverId: string
-  status: 'online' | 'offline' | 'error'
+  status: 'online' | 'offline' | 'error' | 'disabled'
   tools: McpToolInfo[]
   error?: string
   probed_at: number

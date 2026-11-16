@@ -47,7 +47,7 @@ import { APP_SHELL_PAGE_CLASS_NAME } from '@/app/page-shell-style'
 /**
  * MCP 市场：展示 gate-service 预置 MCP 工具目录，并管理已安装的 MCP 服务器。
  * 「全部工具」支持搜索、分类筛选、详情查看、安装前填写环境变量与一键启用；
- * 「已安装」支持健康探测、启用/停用、测试连接、编辑配置与删除。
+ * 「已安装」支持健康探测、启用/停用、测试连接、编辑配置、新建自定义服务器（表单或标准 JSON 导入）与删除。
  */
 export function McpMarketPage() {
   const { t } = useTranslation()
@@ -56,6 +56,7 @@ export function McpMarketPage() {
   const [filter, setFilter] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selected, setSelected] = useState<McpCatalogItem | null>(null)
+  const [creating, setCreating] = useState(false)
 
   const { data: catalog, isLoading, isError } = useQuery({
     queryKey: ['mcp-catalog'],
@@ -112,7 +113,7 @@ export function McpMarketPage() {
 
   return (
     <div className={APP_SHELL_PAGE_CLASS_NAME}>
-      {/* 页头 */}
+      {/* 页头：「新建 MCP」常驻显眼位置，任何页签下一进页面即可见 */}
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10">
           <Wrench className="h-5 w-5 text-primary" />
@@ -121,6 +122,10 @@ export function McpMarketPage() {
           <h1 className="text-xl font-semibold tracking-tight">{t('mcpMarket.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('mcpMarket.subtitle')}</p>
         </div>
+        <Button className="ml-auto shrink-0" onClick={() => setCreating(true)}>
+          <Plus className="mr-1 h-4 w-4" />
+          {t('mcpMarket.createAction')}
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
@@ -222,6 +227,9 @@ export function McpMarketPage() {
           installMutation.reset()
         }}
       />
+
+      {/* 新建 MCP 弹窗（表单 / 标准 JSON 导入），由页头按钮触发 */}
+      {creating ? <McpServerCreateDialog onClose={() => setCreating(false)} /> : null}
     </div>
   )
 }
@@ -650,21 +658,13 @@ function InstalledMcpSection({
   })
 
   if (isLoading) return <SkeletonList count={3} />
-  if (!servers || servers.length === 0) {
-    return (
-      <EmptyState
-        title={t('mcpMarket.installedEmpty')}
-        description={t('mcpMarket.installedEmptyHint')}
-      />
-    )
-  }
 
   return (
     <div className="space-y-3">
-      {/* 工具栏 */}
+      {/* 工具栏：「新建 MCP」入口已上移至页面页头 */}
       <div className="flex items-center gap-3">
         <p className="text-xs text-muted-foreground">
-          {t('mcpMarket.installedCount', { count: servers.length })}
+          {t('mcpMarket.installedCount', { count: servers?.length ?? 0 })}
         </p>
         <Button
           variant="outline"
@@ -678,20 +678,27 @@ function InstalledMcpSection({
         </Button>
       </div>
 
-      <div className="space-y-3">
-        {servers.map((server) => (
-          <InstalledMcpRow
-            key={server.id}
-            server={server}
-            status={statusMap.get(server.id)}
-            statusLoading={statusQuery.isFetching}
-            togglePending={toggleMutation.isPending && toggleMutation.variables?.id === server.id}
-            onToggle={(enabled) => toggleMutation.mutate({ id: server.id, enabled })}
-            onEdit={() => setEditing(server)}
-            onDelete={() => setDeleting(server)}
-          />
-        ))}
-      </div>
+      {!servers || servers.length === 0 ? (
+        <EmptyState
+          title={t('mcpMarket.installedEmpty')}
+          description={t('mcpMarket.installedEmptyHint')}
+        />
+      ) : (
+        <div className="space-y-3">
+          {servers.map((server) => (
+            <InstalledMcpRow
+              key={server.id}
+              server={server}
+              status={statusMap.get(server.id)}
+              statusLoading={statusQuery.isFetching}
+              togglePending={toggleMutation.isPending && toggleMutation.variables?.id === server.id}
+              onToggle={(enabled) => toggleMutation.mutate({ id: server.id, enabled })}
+              onEdit={() => setEditing(server)}
+              onDelete={() => setDeleting(server)}
+            />
+          ))}
+        </div>
+      )}
 
       {/* 编辑弹窗 */}
       {editing ? (
@@ -861,6 +868,13 @@ function McpStatusChip({ status, loading }: { status?: McpServerStatus; loading:
       </span>
     )
   }
+  if (status.status === 'disabled') {
+    return (
+      <span className="flex shrink-0 items-center rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+        {t('mcpMarket.statusDisabled')}
+      </span>
+    )
+  }
   return (
     <span className="flex shrink-0 items-center gap-1 rounded-full bg-destructive/10 px-2 py-1 text-[11px] font-medium text-destructive">
       <XCircle className="h-3 w-3" />
@@ -884,16 +898,23 @@ function McpServerEditDialog({ server, onClose }: { server: McpServerConfig; onC
     () => Object.entries(server.headers ?? {}).map(([key, value]) => ({ key, value })),
   )
 
+  // 按传输类型只发送相关字段，避免切换 transport 后旧字段残留进注册表；后端还有合并校验兜底
+  const saveValid = transport === 'stdio' ? command.trim().length > 0 : url.trim().length > 0
   const saveMutation = useMutation({
     mutationFn: () =>
-      updateMcpServer(server.id, {
-        transport,
-        command,
-        args: argsText.split('\n').map((s) => s.trim()).filter(Boolean),
-        url,
-        env: Object.fromEntries(envPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
-        headers: Object.fromEntries(headerPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
-      }),
+      updateMcpServer(server.id, transport === 'stdio'
+        ? {
+            transport,
+            command: command.trim(),
+            args: argsText.split('\n').map((s) => s.trim()).filter(Boolean),
+            env: Object.fromEntries(envPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+          }
+        : {
+            transport,
+            url: url.trim(),
+            env: Object.fromEntries(envPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+            headers: Object.fromEntries(headerPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+          }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
       void queryClient.invalidateQueries({ queryKey: ['mcp-server-status'] })
@@ -987,7 +1008,12 @@ function McpServerEditDialog({ server, onClose }: { server: McpServerConfig; onC
           <Button variant="outline" size="sm" onClick={onClose}>
             {t('mcpMarket.cancel')}
           </Button>
-          <Button size="sm" disabled={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+          <Button
+            size="sm"
+            disabled={!saveValid || saveMutation.isPending}
+            title={saveValid ? undefined : t('mcpMarket.editIncomplete')}
+            onClick={() => saveMutation.mutate()}
+          >
             {saveMutation.isPending ? t('mcpMarket.saving') : t('mcpMarket.save')}
           </Button>
         </DialogFooter>
@@ -1061,5 +1087,320 @@ function KeyValuePairsEditor({
         </div>
       )}
     </div>
+  )
+}
+
+type McpServerCreatePayload = Omit<McpServerConfig, 'id' | 'created_at' | 'updated_at'>
+
+/** 归一化传输类型声明（兼容 type / transport 字段与常见变体写法） */
+function normalizeTransport(raw: unknown): McpServerConfig['transport'] | null {
+  const v = String(raw ?? '').trim().toLowerCase().replace(/[_\s]/g, '-')
+  if (v === 'stdio') return 'stdio'
+  if (v === 'sse') return 'sse'
+  if (v === 'streamable-http' || v === 'streamablehttp' || v === 'http') return 'streamable-http'
+  return null
+}
+
+function toStringRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')
+      .map(([k, v]) => [k, String(v)]),
+  )
+}
+
+/** 解析标准 mcpServers JSON（兼容 Claude Desktop / Cursor / Cline / Cherry Studio 配置格式）：
+ *  顶层 {mcpServers: {...}} 或直接的 {名称: 配置} 映射均可；有 command 按 stdio，有 url 按远程。
+ *  返回 null 表示没有可导入项，抛错表示 JSON 本身非法。 */
+function parseMcpServersJson(text: string): McpServerCreatePayload[] | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (e) {
+    throw new Error(e instanceof Error ? e.message : String(e))
+  }
+  const root = parsed as Record<string, unknown> | null
+  const map = root && typeof root === 'object' && root.mcpServers && typeof root.mcpServers === 'object'
+    ? (root.mcpServers as Record<string, unknown>)
+    : parsed
+  if (!map || typeof map !== 'object' || Array.isArray(map)) return null
+  const payloads: McpServerCreatePayload[] = []
+  for (const [name, cfgRaw] of Object.entries(map)) {
+    if (!cfgRaw || typeof cfgRaw !== 'object' || Array.isArray(cfgRaw)) continue
+    const cfg = cfgRaw as Record<string, unknown>
+    const command = typeof cfg.command === 'string' ? cfg.command.trim() : ''
+    const url = typeof cfg.url === 'string' ? cfg.url.trim() : ''
+    const declared = normalizeTransport(cfg.transport ?? cfg.type)
+    const transport = command ? 'stdio' : declared ?? (url ? 'streamable-http' : null)
+    if (!transport || (transport === 'stdio' && !command) || (transport !== 'stdio' && !url)) continue
+    payloads.push({
+      name: name.trim(),
+      transport,
+      command: transport === 'stdio' ? command : undefined,
+      args: Array.isArray(cfg.args) ? cfg.args.map((v) => String(v)) : undefined,
+      env: toStringRecord(cfg.env),
+      url: transport === 'stdio' ? undefined : url,
+      headers: toStringRecord(cfg.headers),
+      enabled: true,
+    })
+  }
+  return payloads.length ? payloads : null
+}
+
+/** 新建弹窗外壳：由父组件条件渲染，每次打开都得到全新的表单状态 */
+function McpServerCreateDialog({ onClose }: { onClose: () => void }) {
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <McpServerCreateBody onClose={onClose} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** 新建自定义 MCP 服务器：表单填写 / 标准 mcpServers JSON 导入（对齐 Cline、Cherry Studio 的新建交互） */
+function McpServerCreateBody({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<'form' | 'json'>('form')
+
+  // 表单模式字段
+  const [name, setName] = useState('')
+  const [transport, setTransport] = useState<McpServerConfig['transport']>('stdio')
+  const [command, setCommand] = useState('')
+  const [argsText, setArgsText] = useState('')
+  const [url, setUrl] = useState('')
+  const [envPairs, setEnvPairs] = useState<Array<{ key: string; value: string }>>([])
+  const [headerPairs, setHeaderPairs] = useState<Array<{ key: string; value: string }>>([])
+
+  // JSON 导入状态
+  const [jsonText, setJsonText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  // 已安装列表：用于重名预检（重名注册会让 agent 按 name 解析时静默覆盖，必须在入口拦住）
+  const { data: installedServers } = useQuery({ queryKey: ['mcp-servers'], queryFn: listMcpServers, retry: false })
+  const installedNames = useMemo(() => new Set((installedServers ?? []).map((s) => s.name)), [installedServers])
+
+  const createMutation = useMutation({
+    mutationFn: (payload: McpServerCreatePayload) => addMcpServer(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+      void queryClient.invalidateQueries({ queryKey: ['mcp-server-status'] })
+      onClose()
+    },
+  })
+
+  const nameTrim = name.trim()
+  const nameDuplicate = installedNames.has(nameTrim)
+  const formValid = nameTrim.length > 0
+    && !nameDuplicate
+    && (transport === 'stdio' ? command.trim().length > 0 : url.trim().length > 0)
+
+  const submitForm = () => {
+    createMutation.mutate({
+      name: nameTrim,
+      transport,
+      command: transport === 'stdio' ? command.trim() : undefined,
+      args: transport === 'stdio' ? argsText.split('\n').map((s) => s.trim()).filter(Boolean) : undefined,
+      env: Object.fromEntries(envPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+      url: transport === 'stdio' ? undefined : url.trim(),
+      headers: transport === 'stdio'
+        ? undefined
+        : Object.fromEntries(headerPairs.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value])),
+      enabled: true,
+    })
+  }
+
+  const handleImport = async () => {
+    setJsonError(null)
+    let payloads: McpServerCreatePayload[] | null
+    try {
+      payloads = parseMcpServersJson(jsonText)
+    } catch (e) {
+      setJsonError(t('mcpMarket.jsonParseError', { message: e instanceof Error ? e.message : String(e) }))
+      return
+    }
+    if (!payloads) {
+      setJsonError(t('mcpMarket.jsonNothingToImport'))
+      return
+    }
+    setImporting(true)
+    const failures: string[] = []
+    let okCount = 0
+    for (const payload of payloads) {
+      // 与已安装重名的项直接判失败，避免静默重复注册
+      if (installedNames.has(payload.name)) {
+        failures.push(`${payload.name}: ${t('mcpMarket.duplicateName')}`)
+        continue
+      }
+      try {
+        await addMcpServer(payload)
+        okCount += 1
+      } catch (e) {
+        failures.push(`${payload.name}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+    setImporting(false)
+    if (okCount > 0) {
+      void queryClient.invalidateQueries({ queryKey: ['mcp-servers'] })
+      void queryClient.invalidateQueries({ queryKey: ['mcp-server-status'] })
+    }
+    if (failures.length > 0) {
+      // 全部失败或部分失败都保持弹窗并列出失败项，避免"哪些导进来了"不可知
+      setJsonError(
+        failures.length === payloads.length
+          ? t('mcpMarket.jsonImportFailed', { message: failures[0] ?? '' })
+          : `${t('mcpMarket.jsonImportPartial', { ok: okCount, failed: failures.length })}\n${failures.join('\n')}`,
+      )
+      return
+    }
+    onClose()
+  }
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{t('mcpMarket.createTitle')}</DialogTitle>
+        <DialogDescription>{t('mcpMarket.createDescription')}</DialogDescription>
+      </DialogHeader>
+
+      <Tabs value={mode} onValueChange={(v) => setMode(v as 'form' | 'json')}>
+        <TabsList className="w-full">
+          <TabsTrigger value="form" className="flex-1">{t('mcpMarket.createModeForm')}</TabsTrigger>
+          <TabsTrigger value="json" className="flex-1">{t('mcpMarket.createModeJson')}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="form" className="mt-4 space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="mcp-create-name" className="text-xs">{t('mcpMarket.createName')}</Label>
+            <Input
+              id="mcp-create-name"
+              className="font-mono text-xs"
+              placeholder={t('mcpMarket.createNamePlaceholder')}
+              spellCheck={false}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <p className="text-[11px] text-muted-foreground">{t('mcpMarket.createNameHint')}</p>
+            {nameDuplicate ? (
+              <p className="text-[11px] text-destructive">{t('mcpMarket.createNameDuplicate')}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="mcp-create-transport" className="text-xs">{t('mcpMarket.editTransport')}</Label>
+            <select
+              id="mcp-create-transport"
+              className="h-[var(--control-height)] w-full rounded-md border border-border/60 bg-background/40 px-3 text-sm outline-none transition-colors hover:border-border focus-visible:border-ring"
+              value={transport}
+              onChange={(e) => setTransport(e.target.value as McpServerConfig['transport'])}
+            >
+              <option value="stdio">stdio</option>
+              <option value="sse">SSE</option>
+              <option value="streamable-http">Streamable HTTP</option>
+            </select>
+            <p className="text-[11px] text-muted-foreground">{t('mcpMarket.transportHint')}</p>
+          </div>
+
+          {transport === 'stdio' ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="mcp-create-command" className="text-xs">{t('mcpMarket.command')}</Label>
+              <Input
+                id="mcp-create-command"
+                className="font-mono text-xs"
+                placeholder="npx"
+                spellCheck={false}
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+              />
+              <Label htmlFor="mcp-create-args" className="text-xs">{t('mcpMarket.editArgs')}</Label>
+              <Textarea
+                id="mcp-create-args"
+                rows={3}
+                className="font-mono text-xs"
+                placeholder={'-y\n@org/my-server'}
+                spellCheck={false}
+                value={argsText}
+                onChange={(e) => setArgsText(e.target.value)}
+              />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="mcp-create-url" className="text-xs">{t('mcpMarket.url')}</Label>
+              <Input
+                id="mcp-create-url"
+                className="font-mono text-xs"
+                placeholder="https://example.com/mcp"
+                spellCheck={false}
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+              />
+            </div>
+          )}
+
+          <KeyValuePairsEditor
+            title={t('mcpMarket.editEnv')}
+            addLabel={t('mcpMarket.addPair')}
+            pairs={envPairs}
+            onChange={setEnvPairs}
+          />
+          {transport !== 'stdio' ? (
+            <KeyValuePairsEditor
+              title={t('mcpMarket.editHeaders')}
+              addLabel={t('mcpMarket.addPair')}
+              pairs={headerPairs}
+              onChange={setHeaderPairs}
+            />
+          ) : null}
+        </TabsContent>
+
+        <TabsContent value="json" className="mt-4 space-y-3">
+          <div className="space-y-1">
+            <Label htmlFor="mcp-create-json" className="text-xs">{t('mcpMarket.jsonPasteLabel')}</Label>
+            <p className="text-[11px] text-muted-foreground">{t('mcpMarket.jsonPasteHint')}</p>
+          </div>
+          <Textarea
+            id="mcp-create-json"
+            rows={10}
+            className="font-mono text-xs"
+            placeholder={t('mcpMarket.jsonPastePlaceholder')}
+            spellCheck={false}
+            value={jsonText}
+            onChange={(e) => setJsonText(e.target.value)}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {createMutation.error instanceof Error ? (
+        <p className="text-xs text-destructive">{createMutation.error.message}</p>
+      ) : null}
+      {jsonError ? (
+        <p className="whitespace-pre-line text-xs text-destructive">{jsonError}</p>
+      ) : null}
+
+      <DialogFooter>
+        <Button variant="outline" size="sm" onClick={onClose}>{t('mcpMarket.cancel')}</Button>
+        {mode === 'form' ? (
+          <Button
+            size="sm"
+            disabled={!formValid || createMutation.isPending}
+            title={formValid ? undefined : nameDuplicate ? t('mcpMarket.createNameDuplicate') : t('mcpMarket.formIncomplete')}
+            onClick={submitForm}
+          >
+            {createMutation.isPending ? t('mcpMarket.creating') : t('mcpMarket.createSubmit')}
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            disabled={jsonText.trim().length === 0 || importing}
+            onClick={() => void handleImport()}
+          >
+            {importing ? t('mcpMarket.importing') : t('mcpMarket.createSubmit')}
+          </Button>
+        )}
+      </DialogFooter>
+    </>
   )
 }

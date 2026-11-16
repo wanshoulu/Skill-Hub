@@ -210,6 +210,9 @@ async function route(req, res) {
     try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
     catch { return fail(res, 400, '请求体不是有效的 JSON'); }
     if (!body.name) return fail(res, 400, '需要 name');
+    if (body.transport && !['stdio', 'sse', 'streamable-http'].includes(body.transport)) {
+      return fail(res, 400, `不支持的传输类型：${body.transport}（仅支持 stdio / sse / streamable-http）`);
+    }
     if (body.transport === 'stdio' && !body.command) return fail(res, 400, 'stdio 传输需要 command');
     if ((body.transport === 'sse' || body.transport === 'streamable-http') && !body.url) return fail(res, 400, '该传输需要 url');
     return ok(res, addMcpServer(body));
