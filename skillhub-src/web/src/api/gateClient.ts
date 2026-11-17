@@ -465,27 +465,27 @@ export interface StatsSkillTrendView {
 }
 
 export async function getStatsOverview(): Promise<StatsOverview> {
-  return gateGet<StatsOverview>('/v1/stats/overview')
+  return gateGet<StatsOverview>('/stats/overview')
 }
 
 export async function getStatsTrend(days = 30): Promise<StatsTrend> {
-  return gateGet<StatsTrend>(`/v1/stats/trend?days=${days}`)
+  return gateGet<StatsTrend>(`/stats/trend?days=${days}`)
 }
 
 export async function getStatsSkillTrend(skillId: number, days = 30): Promise<StatsSkillTrendView> {
-  return gateGet<StatsSkillTrendView>(`/v1/stats/trend?days=${days}&skill=${skillId}`)
+  return gateGet<StatsSkillTrendView>(`/stats/trend?days=${days}&skill=${skillId}`)
 }
 
 export async function getStatsSkills(): Promise<StatsSkillsView> {
-  return gateGet<StatsSkillsView>('/v1/stats/skills')
+  return gateGet<StatsSkillsView>('/stats/skills')
 }
 
 export async function getStatsTop(): Promise<StatsTopView> {
-  return gateGet<StatsTopView>('/v1/stats/top')
+  return gateGet<StatsTopView>('/stats/top')
 }
 
 export async function getStatsLifecycle(): Promise<StatsLifecycleView> {
-  return gateGet<StatsLifecycleView>('/v1/stats/lifecycle')
+  return gateGet<StatsLifecycleView>('/stats/lifecycle')
 }
 
 // ── 统一对话 SSE ─────────────────────────────────────────────────
