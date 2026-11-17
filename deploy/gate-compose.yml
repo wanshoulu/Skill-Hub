@@ -49,6 +49,9 @@ services:
       LLM_API_BASE: ${LLM_BASE_URL:-https://maas.qianwenaiapi.com/compatible-mode/v1}
       LLM_API_KEY: ${LLM_API_KEY:?required}
       LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
+      # 回调 gate 与对话执行超时（skill-build-agent 调 gate /v1/agent/*）
+      GATE_BASE_URL: http://gate-service:3002
+      AGENT_TIMEOUT: 900
       SKILLS_CUSTOM_DIR: /data/skills/custom
       SKILLS_OFFICIAL_DIR: /data/skills/official
     volumes:

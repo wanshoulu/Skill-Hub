@@ -193,7 +193,7 @@ export async function updateDraft(id: string, payload: {
 }
 
 export async function getDraftZip(id: string): Promise<Blob> {
-  const res = await fetch(`${GATE_BASE}/drafts/${encodeURIComponent(id)}/zip`, { headers: authHeaders() })
+  const res = await fetch(`${GATE_BASE}/drafts/${encodeURIComponent(id)}/zip`, { method: 'POST', headers: authHeaders() })
   if (!res.ok) throw new Error(`zip 下载失败（HTTP ${res.status}）`)
   return res.blob()
 }

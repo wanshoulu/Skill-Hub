@@ -205,10 +205,11 @@ server {
         client_max_body_size 50M;
     }
 
-    # ── 看板统计（gate /v1/stats/*）：登录门禁复用 API 映射（匿名 401），
+    # ── 看板统计（gate /v1/stats/*）：仅会话 Cookie 放行（统计看板是纯浏览器页面，
+    #    不接受 Bearer——$skillhub_api_gate_deny 对"非空 Authorization"放行，可被伪造头绕过）。
     #    通过后由 nginx 注入 X-Stats-Token（值不出服务器，浏览器不可见）──
     location /gate-api/v1/stats/ {
-        if ($skillhub_api_gate_deny) {
+        if ($skillhub_auth_ok = 0) {
             return 401 '{"code":401,"msg":"Login required"}';
         }
         proxy_pass $gate_api_upstream;
