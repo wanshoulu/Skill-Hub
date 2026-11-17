@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Archive, ArrowUpRight, Copy, Download, Eye, GitCompareArrows, Globe, Info, LockKeyhole, MoreHorizontal, Package, Plus, RotateCcw, Search, Undo2, Upload, Users } from 'lucide-react'
+import { Archive, ArrowUpRight, Copy, Download, Eye, GitCompareArrows, Globe, Info, LockKeyhole, MoreHorizontal, Package, Plus, RotateCcw, Search, Star, Undo2, Upload, Users } from 'lucide-react'
 import styles from './my-skills.module.css'
 import { useLocation, useNavigate, useSearch } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
@@ -558,6 +558,12 @@ export function MySkillsPage() {
                         </span>
                         {versionLabel && <span className={`${styles.version} truncate ${preview && publishedVersion ? styles.pendingVersion : 'font-mono'}`}>{versionLabel}</span>}
                         <span className={`${styles.metadataItem} ${styles.downloads}`} title={t('mySkills.downloadCount')}><Download aria-hidden="true" strokeWidth={1.65} className="h-[13px] w-[13px] shrink-0" />{formatCompactCount(skill.downloadCount)}</span>
+                        <span className={styles.metadataItem} title={t('mySkills.starCount', { count: skill.starCount })}><Star aria-hidden="true" strokeWidth={1.65} className="h-[13px] w-[13px] shrink-0" />{formatCompactCount(skill.starCount)}</span>
+                        {skill.ratingCount > 0 && skill.ratingAvg != null && (
+                          <span className={styles.metadataItem} title={t('mySkills.ratingSummary', { avg: skill.ratingAvg.toFixed(1), count: skill.ratingCount })}>
+                            <Star aria-hidden="true" strokeWidth={1.65} className="h-[13px] w-[13px] shrink-0" style={{ fill: 'hsl(var(--warning))', color: 'hsl(var(--warning))' }} />{skill.ratingAvg.toFixed(1)}
+                          </span>
+                        )}
                         {/* Portal overlays also bubble through the card React tree. */}
                         <span className="contents" onClick={event => event.stopPropagation()}>
                         <Dialog>

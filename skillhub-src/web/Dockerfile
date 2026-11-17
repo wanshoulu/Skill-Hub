@@ -16,6 +16,10 @@ RUN pnpm build
 FROM nginx:alpine
 ENV SKILLHUB_TRUST_FORWARDED_PROTO=false
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+# Stats API token for the /gate-api/v1/stats/ location (injected as X-Stats-Token).
+# Declared empty so envsubst always substitutes it; the real value is provided at
+# runtime via the compose overlay (web-custom.overlay.yml -> STATS_TOKEN).
+ENV STATS_TOKEN=
 # Record a fixed build-time base so the entrypoint defaults SKILLHUB_WEB_BASE_PATH
 # to it and generates matching Nginx routing without repeating the value at runtime.
 # Placeholder builds (the default) intentionally write no file and default to '/'.

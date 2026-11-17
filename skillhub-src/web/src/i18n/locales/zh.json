@@ -627,7 +627,84 @@
     "viewReports": "查看技能举报",
     "previewMore": "...",
     "previewMoreLabel": "查看全部",
-    "userId": "用户 ID"
+    "userId": "用户 ID",
+    "stats": {
+      "asOf": "数据截至 {{time}}（每小时快照）",
+      "viewAnalytics": "技能指标",
+      "viewLifecycle": "生命周期总览",
+      "unavailable": "看板数据暂不可用",
+      "unavailableHint": "统计服务未启用或尚未生成快照，功能导航不受影响。",
+      "totalSkills": "技能总数",
+      "namespaces": "{{count}} 个命名空间",
+      "totalDownloads": "累计下载",
+      "todayDownloads": "今日下载",
+      "last7d": "近 7 日下载",
+      "pendingReviews": "待评审",
+      "pendingPromotions": "待晋升",
+      "downloadTrend": "近 30 天下载趋势",
+      "publishTrend": "近 30 天发布趋势",
+      "statusDist": "容器状态分布",
+      "visibilityDist": "可见性分布",
+      "topDownloads": "下载榜 Top 10",
+      "noData": "暂无数据",
+      "historyShort": "快照历史不足，暂无区间统计",
+      "status": {
+        "ACTIVE": "活跃",
+        "ARCHIVED": "已归档",
+        "HIDDEN": "已隐藏"
+      },
+      "visibility": {
+        "PUBLIC": "公开",
+        "NAMESPACE": "命名空间内",
+        "PRIVATE": "私有"
+      }
+    },
+    "analytics": {
+      "title": "技能指标",
+      "subtitle": "全平台技能分发与质量指标（每小时快照）",
+      "searchPlaceholder": "搜索技能名 / slug / 命名空间",
+      "sortHint": "点击列头排序；点击行首箭头查看单技能 30 天下载趋势。下载为分发口径（含 CLI / 应用安装全部路径）。",
+      "drillTitle": "{{skill}} 近 30 天下载趋势",
+      "empty": "暂无技能数据",
+      "error": "指标数据加载失败",
+      "columns": {
+        "skill": "技能",
+        "downloads": "累计下载",
+        "downloads7d": "近 7 日",
+        "downloads30d": "近 30 日",
+        "stars": "收藏",
+        "rating": "评分",
+        "versions": "已发布版本",
+        "lastPublished": "最近发布"
+      }
+    },
+    "lifecycle": {
+      "title": "生命周期总览",
+      "subtitle": "技能容器与版本状态分布、待办处理队列",
+      "containerStatus": "容器状态",
+      "versionStatus": "版本状态",
+      "visibility": "可见性",
+      "hiddenCount": "已隐藏（治理覆盖）",
+      "queue": {
+        "reviews": "待评审版本",
+        "promotions": "待晋升审批",
+        "yanked": "已下架（YANKED）版本"
+      },
+      "goReviews": "前往评审中心",
+      "goPromotions": "前往晋升管理",
+      "empty": "当前没有待办",
+      "error": "生命周期数据加载失败",
+      "versionStatusLabel": {
+        "DRAFT": "草稿",
+        "SCANNING": "扫描中",
+        "SCAN_FAILED": "扫描失败",
+        "UPLOADED": "已上传",
+        "PENDING_REVIEW": "待评审",
+        "PUBLISHED": "已发布",
+        "REJECTED": "已驳回",
+        "YANKED": "已下架"
+      }
+    }
   },
   "sidebar": {
     "account": "账号管理",
@@ -636,6 +713,8 @@
     "accounts": "账号合并",
     "notifications": "通知设置",
     "skillsAndData": "技能与数据",
+    "analytics": "技能指标",
+    "lifecycle": "生命周期",
     "mySkills": "我的技能",
     "mySuites": "我的套件",
     "publish": "技能发布",
@@ -1245,6 +1324,10 @@
     }
   },
   "overview": {
+    "analytics": "技能指标",
+    "analyticsDesc": "全平台技能下载、收藏与评分指标排序",
+    "lifecycle": "生命周期总览",
+    "lifecycleDesc": "状态分布与评审、晋升、下架待办队列",
     "mySkills": "我的技能",
     "mySkillsDesc": "查看和管理你发布的所有技能",
     "mySuites": "我的套件",
@@ -1288,6 +1371,8 @@
     "coordinateCopyFailed": "复制技能坐标失败，请重试。",
     "compareVersions": "版本比较",
     "downloadCount": "下载次数",
+    "starCount": "收藏数 {{count}}",
+    "ratingSummary": "评分 {{avg}}（{{count}} 人评分）",
     "retry": "重试",
     "filterLabel": "技能筛选",
     "statusFilterLabel": "按状态筛选",

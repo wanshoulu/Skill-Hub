@@ -1,13 +1,21 @@
-import { Link } from '@tanstack/react-router'
+﻿import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/features/auth/use-auth'
 import { APP_SHELL_PAGE_CLASS_NAME } from '@/app/page-shell-style'
 import { DashboardPageHeader } from '@/shared/components/dashboard-page-header'
+import { getStatsOverview, getStatsTrend, getStatsTop } from '@/api/gateClient'
+import { formatCompactCount } from '@/shared/lib/number-format'
 import {
   Star, Heart, Package, Boxes, Key, Shield, Flag, Globe,
   UserCog, Lock, Bell, Clock, ChevronDown, ChevronRight, Github,
+  LineChart, GitBranch, Download, ArrowUpRight, CircleDot,
 } from 'lucide-react'
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 
 /**
  * Sidebar navigation groups for the Dashboard.
@@ -46,6 +54,8 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     label: 'sidebar.skillsAndData',
     items: [
+      { key: 'analytics', icon: LineChart, label: 'sidebar.analytics', to: '/dashboard/analytics', analyticsId: 'stats.analytics.open' },
+      { key: 'lifecycle', icon: GitBranch, label: 'sidebar.lifecycle', to: '/dashboard/lifecycle', analyticsId: 'stats.lifecycle.open' },
       { key: 'skills', icon: Package, label: 'sidebar.mySkills', to: '/dashboard/skills', analyticsId: 'navigation.owned.skills' },
       { key: 'suites', icon: Boxes, label: 'sidebar.mySuites', to: '/dashboard/suites', analyticsId: 'navigation.owned.suites' },
       { key: 'namespaces', icon: Globe, label: 'sidebar.namespaces', to: '/dashboard/namespaces', analyticsId: 'namespace.list.open' },
@@ -85,6 +95,8 @@ export const SIDEBAR_NAV = SIDEBAR_NAV_ITEMS.map(({ key, icon, label, to, review
  * Shown as a grid of quick-access cards linking to main sections.
  */
 const OVERVIEW_CARDS = [
+  { key: 'analytics', icon: LineChart, label: 'overview.analytics', to: '/dashboard/analytics', analyticsId: 'stats.analytics.open', desc: 'overview.analyticsDesc' },
+  { key: 'lifecycle', icon: GitBranch, label: 'overview.lifecycle', to: '/dashboard/lifecycle', analyticsId: 'stats.lifecycle.open', desc: 'overview.lifecycleDesc' },
   { key: 'skills', icon: Package, label: 'overview.mySkills', to: '/dashboard/skills', analyticsId: 'navigation.owned.skills', desc: 'overview.mySkillsDesc' },
   { key: 'suites', icon: Boxes, label: 'overview.mySuites', to: '/dashboard/suites', analyticsId: 'navigation.owned.suites', desc: 'overview.mySuitesDesc' },
   { key: 'tokens', icon: Key, label: 'overview.tokens', to: '/dashboard/tokens', analyticsId: 'account.tokens.open', desc: 'overview.tokensDesc' },
@@ -92,6 +104,223 @@ const OVERVIEW_CARDS = [
   { key: 'profile', icon: UserCog, label: 'overview.profile', to: '/settings/profile', analyticsId: 'account.profile.open', desc: 'overview.profileDesc' },
   { key: 'security', icon: Lock, label: 'overview.security', to: '/settings/security', analyticsId: 'account.security.open', desc: 'overview.securityDesc' },
 ] as const
+
+// ── 统计看板（gate stats，每小时只读快照）────────────────────────
+
+const STATUS_COLORS: Record<string, string> = {
+  ACTIVE: 'hsl(var(--success))',
+  ARCHIVED: 'hsl(var(--muted-foreground))',
+  HIDDEN: 'hsl(var(--warning))',
+}
+const VISIBILITY_COLORS: Record<string, string> = {
+  PUBLIC: 'hsl(var(--primary))',
+  NAMESPACE: 'hsl(var(--warning))',
+  PRIVATE: 'hsl(var(--muted-foreground))',
+}
+
+function ChartTooltipDate({ value }: { value: string }) {
+  return <span className="text-xs">{value}</span>
+}
+
+function KpiCard({ label, value, hint, icon: Icon, to }: {
+  label: string
+  value: string
+  hint?: string
+  icon: React.ComponentType<{ className?: string }>
+  to?: string
+}) {
+  const body = (
+    <>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium" style={{ color: 'hsl(var(--muted-foreground))' }}>{label}</span>
+        <Icon className="h-4 w-4 opacity-60" />
+      </div>
+      <div className="mt-2 text-2xl font-bold tabular-nums" style={{ color: 'hsl(var(--foreground))' }}>{value}</div>
+      {hint ? <div className="mt-1 text-[11px]" style={{ color: 'hsl(var(--muted-foreground))' }}>{hint}</div> : null}
+    </>
+  )
+  if (to) {
+    return (
+      <Link to={to} className="block rounded-xl border border-border/60 bg-background p-4 transition-all hover:border-border hover:shadow-sm">
+        {body}
+      </Link>
+    )
+  }
+  return <div className="rounded-xl border border-border/60 bg-background p-4">{body}</div>
+}
+
+function DashboardStatsSection() {
+  const { t, i18n } = useTranslation()
+  const overview = useQuery({ queryKey: ['gate-stats-overview'], queryFn: getStatsOverview, retry: 1 })
+  const trend = useQuery({ queryKey: ['gate-stats-trend', 30], queryFn: () => getStatsTrend(30), retry: 1 })
+  const top = useQuery({ queryKey: ['gate-stats-top'], queryFn: getStatsTop, retry: 1 })
+
+  if (overview.isError) {
+    return (
+      <div className="mb-6 rounded-xl border border-border/60 bg-background p-5">
+        <div className="text-sm font-semibold">{t('dashboard.stats.unavailable')}</div>
+        <p className="mt-1 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.unavailableHint')}</p>
+      </div>
+    )
+  }
+  if (overview.isLoading || !overview.data) return null
+  const { kpi, asOf } = overview.data
+  const asOfText = new Date(asOf).toLocaleString(i18n.language)
+
+  const statusData = Object.entries(kpi.skills.byStatus).map(([name, value]) => ({
+    name: t(`dashboard.stats.status.${name}`, { defaultValue: name }),
+    key: name,
+    value,
+  }))
+  if (kpi.skills.hidden > 0 && !statusData.some((s) => s.key === 'HIDDEN')) {
+    statusData.push({ name: t('dashboard.stats.status.HIDDEN'), key: 'HIDDEN', value: kpi.skills.hidden })
+  }
+  const visibilityData = Object.entries(kpi.skills.byVisibility).map(([name, value]) => ({
+    name: t(`dashboard.stats.visibility.${name}`, { defaultValue: name }),
+    value,
+  }))
+
+  return (
+    <section className="mb-6 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>
+          <CircleDot className="h-3.5 w-3.5" />
+          <span>{t('dashboard.stats.asOf', { time: asOfText })}</span>
+        </div>
+        <div className="flex gap-2">
+          <Link to="/dashboard/analytics" className="inline-flex items-center gap-1 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent">
+            <LineChart className="h-3.5 w-3.5" />{t('dashboard.stats.viewAnalytics')}<ArrowUpRight className="h-3 w-3 opacity-60" />
+          </Link>
+          <Link to="/dashboard/lifecycle" className="inline-flex items-center gap-1 rounded-md border border-border/60 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent">
+            <GitBranch className="h-3.5 w-3.5" />{t('dashboard.stats.viewLifecycle')}<ArrowUpRight className="h-3 w-3 opacity-60" />
+          </Link>
+        </div>
+      </div>
+
+      {/* KPI 行 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <KpiCard label={t('dashboard.stats.totalSkills')} value={formatCompactCount(kpi.skills.total)} hint={t('dashboard.stats.namespaces', { count: kpi.namespaces.total })} icon={Package} to="/dashboard/analytics" />
+        <KpiCard label={t('dashboard.stats.totalDownloads')} value={formatCompactCount(kpi.downloads.total)} icon={Download} />
+        <KpiCard label={t('dashboard.stats.todayDownloads')} value={kpi.downloads.today == null ? '—' : formatCompactCount(kpi.downloads.today)} icon={Download} />
+        <KpiCard label={t('dashboard.stats.last7d')} value={kpi.downloads.last7d == null ? '—' : formatCompactCount(kpi.downloads.last7d)} hint={kpi.downloads.last7d == null ? t('dashboard.stats.historyShort') : undefined} icon={Download} />
+        <KpiCard label={t('dashboard.stats.pendingReviews')} value={formatCompactCount(kpi.reviews.pending)} icon={Shield} to="/dashboard/reviews" />
+        <KpiCard label={t('dashboard.stats.pendingPromotions')} value={formatCompactCount(kpi.promotions.pending)} icon={ArrowUpRight} to="/dashboard/promotions" />
+      </div>
+
+      {/* 趋势图 */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.downloadTrend')}</h3>
+          {trend.data ? (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trend.data.series} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="dlFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.03} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: string) => v.slice(5)} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} width={48} />
+                  <Tooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: 'hsl(var(--foreground))' }} labelFormatter={(v) => <ChartTooltipDate value={String(v)} />} />
+                  <Area type="monotone" dataKey="downloads" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#dlFill)" connectNulls />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <div className="flex h-56 items-center justify-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.noData')}</div>}
+        </div>
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.publishTrend')}</h3>
+          {trend.data ? (
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trend.data.series} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" tickFormatter={(v: string) => v.slice(5)} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" allowDecimals={false} width={48} />
+                  <Tooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: 'hsl(var(--foreground))' }} />
+                  <Bar dataKey="published" fill="hsl(var(--success))" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <div className="flex h-56 items-center justify-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.noData')}</div>}
+        </div>
+      </div>
+
+      {/* 分布 + Top10 */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.statusDist')}</h3>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={statusData} dataKey="value" nameKey="name" innerRadius={38} outerRadius={64} paddingAngle={2} strokeWidth={0}>
+                  {statusData.map((entry) => (
+                    <Cell key={entry.key} fill={STATUS_COLORS[entry.key] || 'hsl(var(--primary))'} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {statusData.map((entry) => (
+              <li key={entry.key} className="flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ background: STATUS_COLORS[entry.key] || 'hsl(var(--primary))' }} />
+                  {entry.name}
+                </span>
+                <span className="tabular-nums">{entry.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.visibilityDist')}</h3>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={visibilityData} dataKey="value" nameKey="name" innerRadius={38} outerRadius={64} paddingAngle={2} strokeWidth={0}>
+                  {visibilityData.map((entry) => (
+                    <Cell key={entry.name} fill={VISIBILITY_COLORS[entry.name] || 'hsl(var(--primary))'} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))', borderRadius: 8, fontSize: 12 }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {visibilityData.map((entry) => (
+              <li key={entry.name} className="flex items-center justify-between text-xs">
+                <span>{entry.name}</span>
+                <span className="tabular-nums">{entry.value}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="col-span-1 rounded-xl border border-border/60 bg-background p-4 xl:col-span-2">
+          <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.topDownloads')}</h3>
+          {top.data && top.data.downloads.length > 0 ? (
+            <ol className="space-y-1.5">
+              {top.data.downloads.map((item, index) => (
+                <li key={item.id} className="flex items-center gap-2 text-xs">
+                  <span className="w-5 shrink-0 text-center font-semibold tabular-nums" style={{ color: index < 3 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }}>{index + 1}</span>
+                  <Link to="/space/$namespace/$slug" params={{ namespace: item.ns, slug: item.slug }} className="min-w-0 flex-1 truncate hover:underline">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="ml-1" style={{ color: 'hsl(var(--muted-foreground))' }}>@{item.ns}/{item.slug}</span>
+                  </Link>
+                  <span className="shrink-0 tabular-nums" style={{ color: 'hsl(var(--muted-foreground))' }}>{formatCompactCount(item.value)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : <div className="flex h-48 items-center justify-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.noData')}</div>}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 /**
  * Dashboard overview content; the shared Layout owns its sidebar.
@@ -102,6 +331,7 @@ export function DashboardPage() {
   return (
     <div className={APP_SHELL_PAGE_CLASS_NAME}>
       <DashboardPageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} />
+      <DashboardStatsSection />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {OVERVIEW_CARDS.filter((card) => card.key !== 'security' || user?.canChangePassword === true).map((card) => {
         const Icon = card.icon

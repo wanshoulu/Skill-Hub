@@ -23,6 +23,10 @@ map $uri $skillhub_public_uri {
     ~^/favicon\.svg      1;
     ~^/mcp-nav\.js       1;
     ~^/registry/         1;
+    ~^/login-skill-art-(light|dark)\.png$ 1;
+    ~^/[a-z0-9-]+-logo\.svg$              1;
+    ~^/robots\.txt$                       1;
+    ~^/sitemap\.xml$                      1;
 }
 # 组合判定：未登录 且 访问非公开页面 → 1（302 /login）
 map "$skillhub_auth_ok:$skillhub_public_uri" $skillhub_gate_redirect {
@@ -199,6 +203,24 @@ server {
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
         client_max_body_size 50M;
+    }
+
+    # ── 看板统计（gate /v1/stats/*）：登录门禁复用 API 映射（匿名 401），
+    #    通过后由 nginx 注入 X-Stats-Token（值不出服务器，浏览器不可见）──
+    location /gate-api/v1/stats/ {
+        if ($skillhub_api_gate_deny) {
+            return 401 '{"code":401,"msg":"Login required"}';
+        }
+        proxy_pass $gate_api_upstream;
+        rewrite ^/gate-api(/.*)$ $1 break;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Stats-Token "${STATS_TOKEN}";
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_cache off;
+        client_max_body_size 1M;
     }
 
     # ── skill-app-agent（技能应用试运行，SSE）──

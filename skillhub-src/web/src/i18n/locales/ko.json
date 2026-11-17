@@ -532,7 +532,84 @@
     "viewReports": "스킬 신고 보기",
     "previewMore": "...",
     "previewMoreLabel": "전체 보기",
-    "userId": "사용자 ID"
+    "userId": "사용자 ID",
+    "stats": {
+      "asOf": "기준 시각 {{time}} (매시간 스냅샷)",
+      "viewAnalytics": "스킬 지표",
+      "viewLifecycle": "라이프사이클 개요",
+      "unavailable": "대시보드 데이터를 사용할 수 없습니다",
+      "unavailableHint": "통계 서비스가 비활성화되었거나 스냅샷이 아직 없습니다. 탐색 카드는 정상 동작합니다.",
+      "totalSkills": "전체 스킬",
+      "namespaces": "네임스페이스 {{count}}개",
+      "totalDownloads": "누적 다운로드",
+      "todayDownloads": "오늘",
+      "last7d": "최근 7일",
+      "pendingReviews": "심사 대기",
+      "pendingPromotions": "승격 대기",
+      "downloadTrend": "다운로드 — 최근 30일",
+      "publishTrend": "게시 — 최근 30일",
+      "statusDist": "컨테이너 상태",
+      "visibilityDist": "공개 범위",
+      "topDownloads": "다운로드 Top 10",
+      "noData": "데이터 없음",
+      "historyShort": "스냅샷 이력이 짧아 구간 통계를 제공할 수 없습니다",
+      "status": {
+        "ACTIVE": "활성",
+        "ARCHIVED": "보관됨",
+        "HIDDEN": "숨김"
+      },
+      "visibility": {
+        "PUBLIC": "공개",
+        "NAMESPACE": "네임스페이스",
+        "PRIVATE": "비공개"
+      }
+    },
+    "analytics": {
+      "title": "스킬 지표",
+      "subtitle": "플랫폼 전체 배포 및 품질 지표 (매시간 스냅샷)",
+      "searchPlaceholder": "이름 / slug / 네임스페이스 검색",
+      "sortHint": "열 제목을 클릭해 정렬하고, 행 화살표를 클릭하면 30일 다운로드 추이를 봅니다. 다운로드는 배포 횟수 기준입니다(CLI/앱 설치 포함).",
+      "drillTitle": "{{skill}} — 최근 30일 다운로드",
+      "empty": "스킬 데이터 없음",
+      "error": "지표를 불러오지 못했습니다",
+      "columns": {
+        "skill": "스킬",
+        "downloads": "다운로드",
+        "downloads7d": "7일",
+        "downloads30d": "30일",
+        "stars": "즐겨찾기",
+        "rating": "평점",
+        "versions": "게시된 버전",
+        "lastPublished": "최근 게시"
+      }
+    },
+    "lifecycle": {
+      "title": "라이프사이클 개요",
+      "subtitle": "스킬·버전 상태 분포와 처리 대기 큐",
+      "containerStatus": "컨테이너 상태",
+      "versionStatus": "버전 상태",
+      "visibility": "공개 범위",
+      "hiddenCount": "숨김(거버넌스 오버레이)",
+      "queue": {
+        "reviews": "심사 대기 버전",
+        "promotions": "승격 대기",
+        "yanked": "회수(YANKED)된 버전"
+      },
+      "goReviews": "심사 센터 열기",
+      "goPromotions": "승격 관리 열기",
+      "empty": "대기 항목이 없습니다",
+      "error": "라이프사이클 데이터를 불러오지 못했습니다",
+      "versionStatusLabel": {
+        "DRAFT": "초안",
+        "SCANNING": "스캔 중",
+        "SCAN_FAILED": "스캔 실패",
+        "UPLOADED": "업로드됨",
+        "PENDING_REVIEW": "심사 대기",
+        "PUBLISHED": "게시됨",
+        "REJECTED": "반려됨",
+        "YANKED": "회수됨"
+      }
+    }
   },
   "sidebar": {
     "account": "계정",
@@ -541,6 +618,8 @@
     "accounts": "계정 병합",
     "notifications": "알림",
     "skillsAndData": "스킬 및 데이터",
+    "analytics": "스킬 지표",
+    "lifecycle": "라이프사이클",
     "mySkills": "내 스킬",
     "mySuites": "내 스킬 모음",
     "publish": "게시",
@@ -1150,6 +1229,10 @@
     }
   },
   "overview": {
+    "analytics": "스킬 지표",
+    "analyticsDesc": "플랫폼 전체 스킬의 다운로드·즐겨찾기·평점 지표",
+    "lifecycle": "라이프사이클 개요",
+    "lifecycleDesc": "상태 분포와 심사·승격·회수 대기 큐",
     "mySkills": "내 스킬",
     "mySkillsDesc": "게시한 모든 스킬을 확인하고 관리하세요",
     "mySuites": "내 스킬 모음",
@@ -1193,6 +1276,8 @@
     "coordinateCopyFailed": "스킬 좌표를 복사하지 못했습니다. 다시 시도하세요.",
     "compareVersions": "버전 비교",
     "downloadCount": "다운로드 수",
+    "starCount": "즐겨찾기 {{count}}개",
+    "ratingSummary": "평점 {{avg}} ({{count}}개 평가)",
     "retry": "다시 시도",
     "filterLabel": "스킬 필터",
     "statusFilterLabel": "상태별 필터",

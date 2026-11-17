@@ -6,6 +6,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { checkAuth } from './auth.js';
 import {
+  statsEnabled, checkStatsToken, startScheduler,
+  viewOverview, viewTrend, viewSkills, viewTop, viewLifecycle, viewSkillTrend,
+} from './stats.js';
+import {
   ensureDirs, seedSkills, saveJson, readJson, draftDir, dirOf, readRun, listRuns, readEvidence,
 } from './store.js';
 import { packDraftDir } from './pack.js';
@@ -173,6 +177,47 @@ async function route(req, res) {
   if (method === 'GET' && p === '/v1/healthz') {
     const l = llm.configured ? await llm.probe() : { ok: false, error: 'LLM 未配置', model: llm.model };
     return ok(res, { status: 'ok', version: VERSION, llm: l, uptime: process.uptime() });
+  }
+
+  // ── 统计看板（独立鉴权：X-Stats-Token，不走 GATE_TOKEN）──
+  if (p.startsWith('/v1/stats/')) {
+    if (!statsEnabled()) return fail(res, 503, 'stats 未启用（缺少 STATS_PG_URL / STATS_TOKEN 配置）');
+    if (!checkStatsToken(req.headers['x-stats-token'])) return fail(res, 401, 'stats token 无效');
+    const sub = p.slice('/v1/stats/'.length);
+    try {
+      if (method === 'GET' && sub === 'overview') {
+        const v = viewOverview();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'trend') {
+        const days = Math.min(90, Math.max(1, Number(url.searchParams.get('days')) || 30));
+        const skillId = Number(url.searchParams.get('skill')) || null;
+        const v = viewTrend(days);
+        if (!v) return fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+        if (skillId) {
+          const sv = viewSkillTrend(skillId, days);
+          if (!sv) return fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+          if (sv.notFound) return fail(res, 404, `skill ${skillId} 不存在`);
+          return ok(res, { asOf: sv.asOf, days, skill: sv.skill, series: sv.series });
+        }
+        return ok(res, v);
+      }
+      if (method === 'GET' && sub === 'skills') {
+        const v = viewSkills();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'top') {
+        const v = viewTop();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'lifecycle') {
+        const v = viewLifecycle();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+    } catch (e) {
+      return fail(res, 500, `stats 查询失败：${e.message}`);
+    }
+    return fail(res, 404, `未知的 stats 端点：${sub}`);
   }
 
   const auth = checkAuth(req);
@@ -555,6 +600,10 @@ await ensureDirs();
 const seed = await seedSkills().catch((e) => ({ seeded: [], error: String(e.message) }));
 if (seed.seeded?.length) console.log('[gate] seed 技能：', seed.seeded.join(', '));
 if (llm.configured) llm.probe().then((r) => console.log('[gate] LLM 探测:', r.ok ? `ok ${r.latency_ms}ms` : `fail ${r.error}`));
+if (statsEnabled()) {
+  startScheduler();
+  console.log('[gate] stats 看板采集已启动（每小时快照）');
+}
 
 const server = http.createServer((req, res) => {
   route(req, res).catch((e) => {

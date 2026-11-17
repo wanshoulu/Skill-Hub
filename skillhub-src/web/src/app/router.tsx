@@ -113,6 +113,8 @@ const dashboardRouteOptions = { silentFallback: true } satisfies LazyRouteOption
 
 const DashboardPage = createLazyRouteComponent(() => import('@/pages/dashboard'), 'DashboardPage', dashboardRouteOptions)
 const MySkillsPage = createLazyRouteComponent(() => import('@/pages/dashboard/my-skills'), 'MySkillsPage', dashboardRouteOptions)
+const DashboardAnalyticsPage = createLazyRouteComponent(() => import('@/pages/dashboard/analytics'), 'DashboardAnalyticsPage', dashboardRouteOptions)
+const DashboardLifecyclePage = createLazyRouteComponent(() => import('@/pages/dashboard/lifecycle'), 'DashboardLifecyclePage', dashboardRouteOptions)
 const PublishPage = createLazyRouteComponent(() => import('@/pages/dashboard/publish'), 'PublishPage', dashboardRouteOptions)
 const BuildPage = createLazyRouteComponent(() => import('@/pages/build'), 'BuildPage')
 const ApplicationsPage = createLazyRouteComponent(() => import('@/pages/applications'), 'ApplicationsPage')
@@ -425,6 +427,20 @@ const dashboardSkillsRoute = createRoute({
     filter: typeof search.filter === 'string' && search.filter ? search.filter : undefined,
   }),
   component: MySkillsPage,
+})
+
+const dashboardAnalyticsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'dashboard/analytics',
+  beforeLoad: requireAuth,
+  component: DashboardAnalyticsPage,
+})
+
+const dashboardLifecycleRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'dashboard/lifecycle',
+  beforeLoad: requireAuth,
+  component: DashboardLifecyclePage,
 })
 
 const dashboardPublishRoute = createRoute({
@@ -842,6 +858,8 @@ const routeTree = rootRoute.addChildren([
   skillVersionCompareRoute,
   dashboardRoute,
   dashboardSkillsRoute,
+  dashboardAnalyticsRoute,
+  dashboardLifecycleRoute,
   dashboardPublishRoute,
   dashboardSuitesRoute,
   dashboardSuiteManagementRoute,

@@ -348,6 +348,146 @@ export async function listLibrarySkills(): Promise<LibrarySkill[]> {
   return data as LibrarySkill[]
 }
 
+// ── 统计看板（gate stats，X-Stats-Token 由 nginx 注入）─────────────
+
+export interface StatsOverview {
+  asOf: string
+  collecting: boolean
+  lastError?: string | null
+  kpi: {
+    skills: {
+      total: number
+      byStatus: Record<string, number>
+      byVisibility: Record<string, number>
+      hidden: number
+    }
+    versions: { byStatus: Record<string, number> }
+    namespaces: { total: number }
+    downloads: { total: number; today: number | null; last7d: number | null }
+    stars: { total: number }
+    reviews: { pending: number }
+    promotions: { pending: number }
+  }
+}
+
+export interface StatsTrendPoint {
+  date: string
+  downloads: number | null
+  published: number
+}
+
+export interface StatsTrend {
+  asOf: string
+  days: number
+  series: StatsTrendPoint[]
+}
+
+export interface StatsSkill {
+  id: number
+  slug: string
+  ns: string
+  name: string
+  status: string
+  visibility: string
+  hidden: boolean
+  downloadCount: number
+  starCount: number
+  ratingAvg: number
+  ratingCount: number
+  versionCount: number
+  publishedCount: number
+  lastPublishedAt: string | null
+  downloads7d?: number | null
+  downloads30d?: number | null
+}
+
+export interface StatsSkillsView {
+  asOf: string
+  skills: StatsSkill[]
+}
+
+export interface StatsTopItem {
+  id: number
+  ns: string
+  slug: string
+  name: string
+  value: number
+}
+
+export interface StatsTopView {
+  asOf: string
+  downloads: StatsTopItem[]
+  stars: StatsTopItem[]
+}
+
+export interface StatsPendingReview {
+  id: number
+  ns: string
+  slug: string
+  version: string
+  submitted_at: string
+  submitted_by: string
+}
+
+export interface StatsPendingPromotion {
+  id: number
+  ns: string
+  slug: string
+  version: string
+  target_ns: string
+  submitted_at: string
+  submitted_by: string
+}
+
+export interface StatsYankedVersion {
+  skill_id: number
+  ns: string
+  slug: string
+  version_id: number
+  version: string
+  published_at: string | null
+}
+
+export interface StatsLifecycleView {
+  asOf: string
+  skills: StatsOverview['kpi']['skills']
+  versions: { byStatus: Record<string, number> }
+  pendingReviews: StatsPendingReview[]
+  pendingPromotions: StatsPendingPromotion[]
+  yankedVersions: StatsYankedVersion[]
+}
+
+export interface StatsSkillTrendView {
+  asOf: string
+  days: number
+  skill: StatsSkill
+  series: Array<{ date: string; downloads: number | null }>
+}
+
+export async function getStatsOverview(): Promise<StatsOverview> {
+  return gateGet<StatsOverview>('/v1/stats/overview')
+}
+
+export async function getStatsTrend(days = 30): Promise<StatsTrend> {
+  return gateGet<StatsTrend>(`/v1/stats/trend?days=${days}`)
+}
+
+export async function getStatsSkillTrend(skillId: number, days = 30): Promise<StatsSkillTrendView> {
+  return gateGet<StatsSkillTrendView>(`/v1/stats/trend?days=${days}&skill=${skillId}`)
+}
+
+export async function getStatsSkills(): Promise<StatsSkillsView> {
+  return gateGet<StatsSkillsView>('/v1/stats/skills')
+}
+
+export async function getStatsTop(): Promise<StatsTopView> {
+  return gateGet<StatsTopView>('/v1/stats/top')
+}
+
+export async function getStatsLifecycle(): Promise<StatsLifecycleView> {
+  return gateGet<StatsLifecycleView>('/v1/stats/lifecycle')
+}
+
 // ── 统一对话 SSE ─────────────────────────────────────────────────
 
 export type AgentCardType =

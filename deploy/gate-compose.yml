@@ -21,6 +21,9 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:?required}
       LLM_MODEL: ${LLM_MODEL:-qwen3.7-flash}
       BUILD_AGENT_URL: http://skill-build-agent:8300
+      # 看板统计（stats 模块）：postgres 只读连接 + 独立 token（X-Stats-Token）
+      STATS_PG_URL: ${STATS_PG_URL:-}
+      STATS_TOKEN: ${STATS_TOKEN:-}
     volumes:
       - gate_data:/data
       - ./seed:/seed:ro

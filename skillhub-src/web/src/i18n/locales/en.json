@@ -627,7 +627,84 @@
     "viewReports": "View skill reports",
     "previewMore": "...",
     "previewMoreLabel": "View All",
-    "userId": "User ID"
+    "userId": "User ID",
+    "stats": {
+      "asOf": "Data as of {{time}} (hourly snapshots)",
+      "viewAnalytics": "Skill Metrics",
+      "viewLifecycle": "Lifecycle Overview",
+      "unavailable": "Dashboard data unavailable",
+      "unavailableHint": "The stats service is disabled or has no snapshot yet. Navigation cards still work.",
+      "totalSkills": "Total Skills",
+      "namespaces": "{{count}} namespaces",
+      "totalDownloads": "Total Downloads",
+      "todayDownloads": "Today",
+      "last7d": "Last 7 Days",
+      "pendingReviews": "Pending Reviews",
+      "pendingPromotions": "Pending Promotions",
+      "downloadTrend": "Downloads — Last 30 Days",
+      "publishTrend": "Publishes — Last 30 Days",
+      "statusDist": "Container Status",
+      "visibilityDist": "Visibility",
+      "topDownloads": "Top 10 by Downloads",
+      "noData": "No data",
+      "historyShort": "Snapshot history is still short; window stats unavailable",
+      "status": {
+        "ACTIVE": "Active",
+        "ARCHIVED": "Archived",
+        "HIDDEN": "Hidden"
+      },
+      "visibility": {
+        "PUBLIC": "Public",
+        "NAMESPACE": "Namespace",
+        "PRIVATE": "Private"
+      }
+    },
+    "analytics": {
+      "title": "Skill Metrics",
+      "subtitle": "Platform-wide distribution and quality metrics (hourly snapshots)",
+      "searchPlaceholder": "Search name / slug / namespace",
+      "sortHint": "Click a column header to sort; click the row arrow for a 30-day download trend. Downloads count distribution events (CLI / app installs included).",
+      "drillTitle": "{{skill}} — downloads, last 30 days",
+      "empty": "No skill data",
+      "error": "Failed to load metrics",
+      "columns": {
+        "skill": "Skill",
+        "downloads": "Downloads",
+        "downloads7d": "7d",
+        "downloads30d": "30d",
+        "stars": "Stars",
+        "rating": "Rating",
+        "versions": "Published Versions",
+        "lastPublished": "Last Published"
+      }
+    },
+    "lifecycle": {
+      "title": "Lifecycle Overview",
+      "subtitle": "Skill and version status distribution with actionable queues",
+      "containerStatus": "Container Status",
+      "versionStatus": "Version Status",
+      "visibility": "Visibility",
+      "hiddenCount": "Hidden (governance overlay)",
+      "queue": {
+        "reviews": "Pending Reviews",
+        "promotions": "Pending Promotions",
+        "yanked": "Yanked Versions"
+      },
+      "goReviews": "Open Review Center",
+      "goPromotions": "Open Promotions",
+      "empty": "Nothing pending",
+      "error": "Failed to load lifecycle data",
+      "versionStatusLabel": {
+        "DRAFT": "Draft",
+        "SCANNING": "Scanning",
+        "SCAN_FAILED": "Scan Failed",
+        "UPLOADED": "Uploaded",
+        "PENDING_REVIEW": "Pending Review",
+        "PUBLISHED": "Published",
+        "REJECTED": "Rejected",
+        "YANKED": "Yanked"
+      }
+    }
   },
   "sidebar": {
     "account": "Account",
@@ -636,6 +713,8 @@
     "accounts": "Account Merge",
     "notifications": "Notifications",
     "skillsAndData": "Skills & Data",
+    "analytics": "Skill Metrics",
+    "lifecycle": "Lifecycle",
     "mySkills": "My Skills",
     "mySuites": "My Suites",
     "publish": "Publish",
@@ -1245,6 +1324,10 @@
     }
   },
   "overview": {
+    "analytics": "Skill Metrics",
+    "analyticsDesc": "Platform-wide downloads, stars and ratings for every skill",
+    "lifecycle": "Lifecycle Overview",
+    "lifecycleDesc": "Status distribution plus review, promotion and yank queues",
     "mySkills": "My Skills",
     "mySkillsDesc": "View and manage all your published skills",
     "mySuites": "My Suites",
@@ -1288,6 +1371,8 @@
     "coordinateCopyFailed": "Could not copy the coordinate. Try again.",
     "compareVersions": "Compare versions",
     "downloadCount": "Downloads",
+    "starCount": "Stars: {{count}}",
+    "ratingSummary": "Rating {{avg}} ({{count}} ratings)",
     "retry": "Retry",
     "filterLabel": "Skill filters",
     "statusFilterLabel": "Filter by status",

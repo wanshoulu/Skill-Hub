@@ -28,10 +28,10 @@ overrides:
 
 patchedDependencies:
   '@eslint/eslintrc@2.1.4':
-    hash: 9f53c293f48fe23286f946e40d95b3aac2827174c5b8038939743109b4495545
+    hash: dhy6p67p5tdy5jca22u5vdmrpi
     path: patches/@eslint__eslintrc@2.1.4.patch
   '@redocly/openapi-core@1.34.10':
-    hash: cc938ef58f0f8c1a0cda68d7d932b2fe7029cc96e5df2ee08841912c4e98f93e
+    hash: smacycd4wpfecwcsclbmk4dq7i
     path: patches/@redocly__openapi-core@1.34.10.patch
 
 importers:
@@ -101,6 +101,9 @@ importers:
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
+      recharts:
+        specifier: ^2.15.0
+        version: 2.15.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       rehype-highlight:
         specifier: ^7.0.2
         version: 7.0.2
@@ -2004,6 +2007,9 @@ packages:
       supports-color:
         optional: true
 
+  decimal.js-light@2.5.1:
+    resolution: {integrity: sha512-qIMFpTMZmny+MMIitAB6D7iVPEorVw6YQRWkvarTkT4tBeSLLiHzcwj6q0MmYSFCiVpiqPJTJEYIrpcPzVEIvg==}
+
   decimal.js@10.6.0:
     resolution: {integrity: sha512-YpgQiITW3JXGntzdUmyUR1V812Hn8T1YVXhCu+wO3OpS4eU9l4YdD3qjyiKdV6mvV29zapkMeD390UVEf2lkUg==}
 
@@ -2049,6 +2055,9 @@ packages:
 
   dom-accessibility-api@0.5.16:
     resolution: {integrity: sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg==}
+
+  dom-helpers@5.2.1:
+    resolution: {integrity: sha512-nRCa7CK3VTrM2NmGkIy4cbK7IZlgBE/PYMn55rrXefr5xXDP0LdtfPnblFDoVdcAfslJ7or6iqAUnx0CCGIWQA==}
 
   dompurify@3.4.17:
     resolution: {integrity: sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==}
@@ -2137,6 +2146,9 @@ packages:
     resolution: {integrity: sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==}
     engines: {node: '>=0.10.0'}
 
+  eventemitter3@4.0.7:
+    resolution: {integrity: sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==}
+
   expect-type@1.3.0:
     resolution: {integrity: sha512-knvyeauYhqjOYvQ66MznSMs83wmHrCycNEN6Ao+2AeYEfxUIkuiVxdEa1qlGEPK+We3n0THiDciYSsCcgW/DoA==}
     engines: {node: '>=12.0.0'}
@@ -2146,6 +2158,10 @@ packages:
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
+
+  fast-equals@5.4.5:
+    resolution: {integrity: sha512-yKEpcFuRPu/pTQL2VB8YKE2yFldrLlIsoWtJeBnAdqEhvu21OgkFT0C8njf/xYc2LSZGEr3K9JGjthHJxnVLvQ==}
+    engines: {node: '>=6.0.0'}
 
   fast-glob@3.3.3:
     resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
@@ -2480,6 +2496,9 @@ packages:
 
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
+
+  lodash@4.18.1:
+    resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
   longest-streak@3.1.0:
     resolution: {integrity: sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g==}
@@ -2925,6 +2944,9 @@ packages:
   react-is@17.0.2:
     resolution: {integrity: sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w==}
 
+  react-is@18.3.1:
+    resolution: {integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==}
+
   react-markdown@10.1.0:
     resolution: {integrity: sha512-qKxVopLT/TyA6BX3Ue5NwabOsAzm0Q7kAPwq6L+wWDwisYs7R8vZ0nRXqq6rkueboxpkjvLGU9fWifiX/ZZFxQ==}
     peerDependencies:
@@ -2955,6 +2977,12 @@ packages:
       '@types/react':
         optional: true
 
+  react-smooth@4.0.4:
+    resolution: {integrity: sha512-gnGKTpYwqL0Iii09gHobNolvX4Kiq4PKx6eWBCYYix+8cdw+cGo3do906l1NBPKkSWx1DghC1dlWG9L2uGd61Q==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
   react-style-singleton@2.2.3:
     resolution: {integrity: sha512-b6jSvxvVnyptAiLjbkWLE/lOnR4lfTtDAl+eUC7RZy+QQWc6wRzIV2CE6xBuMmDxc2qIihtDCZD5NPOFl7fRBQ==}
     engines: {node: '>=10'}
@@ -2964,6 +2992,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  react-transition-group@4.4.5:
+    resolution: {integrity: sha512-pZcd1MCJoiKiBR2NRxeCRg13uCXbydPnmB4EOeRrY7480qNWO8IIgQG6zlDkm6uRMsURXPuKq0GWtiM59a5Q6g==}
+    peerDependencies:
+      react: '>=16.6.0'
+      react-dom: '>=16.6.0'
 
   react@19.2.4:
     resolution: {integrity: sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ==}
@@ -2975,6 +3009,16 @@ packages:
   readdirp@3.6.0:
     resolution: {integrity: sha512-hOS089on8RduqdbhvQ5Z37A0ESjsqz6qnRcffsMU3495FuTdqSm+7bhJ29JvIOsBDEEnan5DPu9t3To9VRlMzA==}
     engines: {node: '>=8.10.0'}
+
+  recharts-scale@0.4.5:
+    resolution: {integrity: sha512-kivNFO+0OcUNu7jQquLXAxz1FIwZj8nrj+YkOKc5694NbjCvcT6aSZiIzNzd2Kul4o4rTto8QVR9lMNtxD4G1w==}
+
+  recharts@2.15.4:
+    resolution: {integrity: sha512-UT/q6fwS3c1dHbXv2uFgYJ9BMFHu3fwnd7AYZaEQhXuYQ4hgsxLvsUXzGdKeZrW5xopzDCvuA2N41WJ88I7zIw==}
+    engines: {node: '>=14'}
+    peerDependencies:
+      react: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.0.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   rehype-highlight@7.0.2:
     resolution: {integrity: sha512-k158pK7wdC2qL3M5NcZROZ2tR/l7zOzjxXd5VGdcfIyoijjQqpHd3JKtYSBDpDZ38UI2WJWuFAtkMDxmx5kstA==}
@@ -3318,6 +3362,9 @@ packages:
 
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
+
+  victory-vendor@36.9.2:
+    resolution: {integrity: sha512-PnpQQMuxlwYdocC8fIJqVXvkeViHYzotI+NJrCuav0ZYFoq912ZHBk3mCeuj+5/VpodOjPe1z0Fk2ihgzlXqjQ==}
 
   vite@6.4.5:
     resolution: {integrity: sha512-4enwjFfi4IwtEh0w+jPzpLVOFQiPHmmzPxcHXQOyEur47o6u0jE573DmGpjA+7irXoMLYRZD5ZaFUEneS3abPg==}
@@ -3868,7 +3915,7 @@ snapshots:
 
   '@eslint-community/regexpp@4.12.2': {}
 
-  '@eslint/eslintrc@2.1.4(patch_hash=9f53c293f48fe23286f946e40d95b3aac2827174c5b8038939743109b4495545)':
+  '@eslint/eslintrc@2.1.4(patch_hash=dhy6p67p5tdy5jca22u5vdmrpi)':
     dependencies:
       ajv: 6.14.0
       debug: 4.4.3(supports-color@10.2.2)
@@ -4396,7 +4443,7 @@ snapshots:
 
   '@redocly/config@0.22.0': {}
 
-  '@redocly/openapi-core@1.34.10(patch_hash=cc938ef58f0f8c1a0cda68d7d932b2fe7029cc96e5df2ee08841912c4e98f93e)(supports-color@10.2.2)':
+  '@redocly/openapi-core@1.34.10(patch_hash=smacycd4wpfecwcsclbmk4dq7i)(supports-color@10.2.2)':
     dependencies:
       '@redocly/ajv': 8.11.2
       '@redocly/config': 0.22.0
@@ -5268,6 +5315,8 @@ snapshots:
     optionalDependencies:
       supports-color: 10.2.2
 
+  decimal.js-light@2.5.1: {}
+
   decimal.js@10.6.0: {}
 
   decode-named-character-reference@1.3.0:
@@ -5305,6 +5354,11 @@ snapshots:
       esutils: 2.0.3
 
   dom-accessibility-api@0.5.16: {}
+
+  dom-helpers@5.2.1:
+    dependencies:
+      '@babel/runtime': 7.28.6
+      csstype: 3.2.3
 
   dompurify@3.4.17:
     optionalDependencies:
@@ -5376,7 +5430,7 @@ snapshots:
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@8.57.1)
       '@eslint-community/regexpp': 4.12.2
-      '@eslint/eslintrc': 2.1.4(patch_hash=9f53c293f48fe23286f946e40d95b3aac2827174c5b8038939743109b4495545)
+      '@eslint/eslintrc': 2.1.4(patch_hash=dhy6p67p5tdy5jca22u5vdmrpi)
       '@eslint/js': 8.57.1
       '@humanwhocodes/config-array': 0.13.0
       '@humanwhocodes/module-importer': 1.0.1
@@ -5439,11 +5493,15 @@ snapshots:
 
   esutils@2.0.3: {}
 
+  eventemitter3@4.0.7: {}
+
   expect-type@1.3.0: {}
 
   extend@3.0.2: {}
 
   fast-deep-equal@3.1.3: {}
+
+  fast-equals@5.4.5: {}
 
   fast-glob@3.3.3:
     dependencies:
@@ -5766,6 +5824,8 @@ snapshots:
   lodash-es@4.18.1: {}
 
   lodash.merge@4.6.2: {}
+
+  lodash@4.18.1: {}
 
   longest-streak@3.1.0: {}
 
@@ -6232,7 +6292,7 @@ snapshots:
 
   openapi-typescript@7.13.0(typescript@5.9.3):
     dependencies:
-      '@redocly/openapi-core': 1.34.10(patch_hash=cc938ef58f0f8c1a0cda68d7d932b2fe7029cc96e5df2ee08841912c4e98f93e)(supports-color@10.2.2)
+      '@redocly/openapi-core': 1.34.10(patch_hash=smacycd4wpfecwcsclbmk4dq7i)(supports-color@10.2.2)
       ansi-colors: 4.1.3
       change-case: 5.4.4
       parse-json: 8.3.0
@@ -6431,6 +6491,8 @@ snapshots:
 
   react-is@17.0.2: {}
 
+  react-is@18.3.1: {}
+
   react-markdown@10.1.0(@types/react@19.2.14)(react@19.2.4):
     dependencies:
       '@types/hast': 3.0.4
@@ -6470,6 +6532,14 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.14
 
+  react-smooth@4.0.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      fast-equals: 5.4.5
+      prop-types: 15.8.1
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      react-transition-group: 4.4.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+
   react-style-singleton@2.2.3(@types/react@19.2.14)(react@19.2.4):
     dependencies:
       get-nonce: 1.0.1
@@ -6477,6 +6547,15 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.14
+
+  react-transition-group@4.4.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      '@babel/runtime': 7.28.6
+      dom-helpers: 5.2.1
+      loose-envify: 1.4.0
+      prop-types: 15.8.1
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
 
   react@19.2.4: {}
 
@@ -6487,6 +6566,23 @@ snapshots:
   readdirp@3.6.0:
     dependencies:
       picomatch: 2.3.2
+
+  recharts-scale@0.4.5:
+    dependencies:
+      decimal.js-light: 2.5.1
+
+  recharts@2.15.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      clsx: 2.1.1
+      eventemitter3: 4.0.7
+      lodash: 4.18.1
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      react-is: 18.3.1
+      react-smooth: 4.0.4(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      recharts-scale: 0.4.5
+      tiny-invariant: 1.3.3
+      victory-vendor: 36.9.2
 
   rehype-highlight@7.0.2:
     dependencies:
@@ -6875,6 +6971,23 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
+
+  victory-vendor@36.9.2:
+    dependencies:
+      '@types/d3-array': 3.2.2
+      '@types/d3-ease': 3.0.2
+      '@types/d3-interpolate': 3.0.4
+      '@types/d3-scale': 4.0.9
+      '@types/d3-shape': 3.2.0
+      '@types/d3-time': 3.0.4
+      '@types/d3-timer': 3.0.2
+      d3-array: 3.2.4
+      d3-ease: 3.0.1
+      d3-interpolate: 3.0.1
+      d3-scale: 4.0.2
+      d3-shape: 3.2.0
+      d3-time: 3.1.0
+      d3-timer: 3.0.1
 
   vite@6.4.5(jiti@1.21.7):
     dependencies:
