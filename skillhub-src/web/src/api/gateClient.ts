@@ -375,6 +375,14 @@ export interface StatsOverview {
     reviews: { pending: number }
     promotions: { pending: number }
   }
+  /** 核心高价值指标（首页 KPI 收敛后唯一下游）；旧版 gate 无此块 */
+  core?: {
+    active: { published: number; active30d: number | null; ratio: number | null }
+    triggered: { count: number; total: number; ratio: number | null }
+    rating: { avg: number | null; ratedCount30d: number | null }
+    manhours: { enabled: boolean; perActiveSkillHours: number; hoursPerMonth: number | null }
+    mau: number | null
+  }
 }
 
 export interface StatsTrendPoint {
@@ -425,6 +433,8 @@ export interface StatsTopView {
   asOf: string
   downloads: StatsTopItem[]
   stars: StatsTopItem[]
+  /** 调用榜：30 天事件表独立用户数（旧版 gate 无此字段） */
+  calls?: StatsTopItem[]
 }
 
 export interface StatsPendingReview {

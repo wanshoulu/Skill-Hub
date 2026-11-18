@@ -456,6 +456,11 @@ export function viewOverview() {
     if (d.day < today) todayBase = d;
   }
   const todayBaseSnap = todayBase ? loadSnap(todayBase.rel) : null;
+  // 核心高价值指标：首页 KPI 收敛后唯一下游（active/triggered/rating/manhours/mau）
+  const { d30, published, active30d } = active30dStats(snap);
+  const triggered = new Set((snap.adoption?.skillUsers || []).map((r) => Number(r.skill_id))).size;
+  const totalSkills = snap.overview.skills.total;
+  const perActiveSkill = Number(process.env.STATS_VALUE_MANHOURS_PER_ACTIVE_SKILL || 0);
   return {
     asOf: snap.ts,
     collecting: !lastError,
@@ -472,6 +477,28 @@ export function viewOverview() {
       stars: snap.overview.stars,
       reviews: snap.overview.reviews,
       promotions: snap.overview.promotions,
+    },
+    core: {
+      active: {
+        published: published.length,
+        active30d,
+        ratio: d30 && published.length ? active30d / published.length : null,
+      },
+      triggered: {
+        count: triggered,
+        total: totalSkills,
+        ratio: totalSkills ? triggered / totalSkills : null,
+      },
+      rating: {
+        avg: snap.quality?.ratings?.avgScore ?? null,
+        ratedCount30d: snap.quality?.ratings?.ratedCount30d ?? null,
+      },
+      manhours: {
+        enabled: perActiveSkill > 0,
+        perActiveSkillHours: perActiveSkill,
+        hoursPerMonth: active30d && perActiveSkill > 0 ? active30d * perActiveSkill : null,
+      },
+      mau: snap.adoption?.users?.mau ?? null,
     },
   };
 }
@@ -512,10 +539,18 @@ export function viewTop() {
   if (!snap) return null;
   const pick = (key) => [...snap.skills].sort((a, b) => b[key] - a[key]).slice(0, 10)
     .map((s) => ({ id: s.id, ns: s.ns, slug: s.slug, name: s.name, value: s[key] }));
+  // 调用榜：30 天事件表独立用户数（business_event_log），事件表关闭时为空数组
+  const su = new Map((snap.adoption?.skillUsers || []).map((r) => [Number(r.skill_id), r.users]));
+  const calls = snap.skills
+    .map((s) => ({ id: s.id, ns: s.ns, slug: s.slug, name: s.name, value: su.get(s.id) || 0 }))
+    .filter((x) => x.value > 0)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 10);
   return {
     asOf: snap.ts,
     downloads: pick('downloadCount'),
     stars: pick('starCount'),
+    calls,
   };
 }
 
@@ -647,10 +682,8 @@ export function viewAdoption() {
   };
 }
 
-// 业务价值：活跃技能占比（货架周转）、贡献者、套件、节省工时估算（配置化系数）
-export function viewValue() {
-  const snap = latestSnap();
-  if (!snap) return null;
+// 30 天活跃技能统计（快照差分）——viewOverview.core 与 viewValue 共用
+function active30dStats(snap) {
   const daily = dailyEndSnaps();
   const loadEnd = (offsetDays, ref) => {
     const c = new Date(ref); c.setDate(c.getDate() - offsetDays);
@@ -668,6 +701,14 @@ export function viewValue() {
       return old !== undefined && Math.max(0, s.downloadCount - old.downloadCount) > 0;
     }).length;
   }
+  return { d30, published, active30d };
+}
+
+// 业务价值：活跃技能占比（货架周转）、贡献者、套件、节省工时估算（配置化系数）
+export function viewValue() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  const { d30, published, active30d } = active30dStats(snap);
   const perActiveSkill = Number(process.env.STATS_VALUE_MANHOURS_PER_ACTIVE_SKILL || 0);
   return {
     asOf: snap.ts,

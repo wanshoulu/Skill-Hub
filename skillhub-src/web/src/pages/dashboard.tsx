@@ -6,8 +6,7 @@ import { useAuth } from '@/features/auth/use-auth'
 import { APP_SHELL_PAGE_CLASS_NAME } from '@/app/page-shell-style'
 import { DashboardPageHeader } from '@/shared/components/dashboard-page-header'
 import {
-  getStatsAdoption, getStatsEfficiency, getStatsOverview, getStatsQuality,
-  getStatsTrend, getStatsTop, getStatsValue,
+  getStatsOverview, getStatsTrend, getStatsTop,
 } from '@/api/gateClient'
 import { formatCompactCount, formatHours, formatPercent } from '@/shared/lib/number-format'
 import {
@@ -159,26 +158,6 @@ function DashboardStatsSection() {
   const overview = useQuery({ queryKey: ['gate-stats-overview'], queryFn: getStatsOverview, retry: 1 })
   const trend = useQuery({ queryKey: ['gate-stats-trend', 30], queryFn: () => getStatsTrend(30), retry: 1 })
   const top = useQuery({ queryKey: ['gate-stats-top'], queryFn: getStatsTop, retry: 1 })
-  // Extended KPIs (adoption/value/quality/efficiency) fetched in parallel; a failed
-  // endpoint only degrades its own card to "—" instead of failing the section.
-  const extended = useQuery({
-    queryKey: ['gate-stats-extended-kpi'],
-    queryFn: async () => {
-      const [adoption, value, quality, efficiency] = await Promise.allSettled([
-        getStatsAdoption(),
-        getStatsValue(),
-        getStatsQuality(),
-        getStatsEfficiency(),
-      ])
-      return {
-        adoption: adoption.status === 'fulfilled' ? adoption.value : null,
-        value: value.status === 'fulfilled' ? value.value : null,
-        quality: quality.status === 'fulfilled' ? quality.value : null,
-        efficiency: efficiency.status === 'fulfilled' ? efficiency.value : null,
-      }
-    },
-    retry: 1,
-  })
 
   if (overview.isError) {
     return (
@@ -189,7 +168,7 @@ function DashboardStatsSection() {
     )
   }
   if (overview.isLoading || !overview.data) return null
-  const { kpi, asOf } = overview.data
+  const { kpi, core, asOf } = overview.data
   const asOfText = new Date(asOf).toLocaleString(i18n.language)
 
   const statusData = Object.entries(kpi.skills.byStatus).map(([name, value]) => ({
@@ -222,18 +201,16 @@ function DashboardStatsSection() {
         </div>
       </div>
 
-      {/* KPI 行 */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {/* KPI 行：基础 4 张 + 核心高价值 4 张 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <KpiCard label={t('dashboard.stats.totalSkills')} value={formatCompactCount(kpi.skills.total)} hint={t('dashboard.stats.namespaces', { count: kpi.namespaces.total })} icon={Package} to="/dashboard/analytics" />
         <KpiCard label={t('dashboard.stats.totalDownloads')} value={formatCompactCount(kpi.downloads.total)} icon={Download} />
         <KpiCard label={t('dashboard.stats.todayDownloads')} value={kpi.downloads.today == null ? '—' : formatCompactCount(kpi.downloads.today)} icon={Download} />
-        <KpiCard label={t('dashboard.stats.last7d')} value={kpi.downloads.last7d == null ? '—' : formatCompactCount(kpi.downloads.last7d)} hint={kpi.downloads.last7d == null ? t('dashboard.stats.historyShort') : undefined} icon={Download} />
-        <KpiCard label={t('dashboard.stats.pendingReviews')} value={formatCompactCount(kpi.reviews.pending)} icon={Shield} to="/dashboard/reviews" />
-        <KpiCard label={t('dashboard.stats.pendingPromotions')} value={formatCompactCount(kpi.promotions.pending)} icon={ArrowUpRight} to="/dashboard/promotions" />
-        <KpiCard label={t('dashboard.stats.activeUsers7d')} value={extended.data?.adoption?.users ? formatCompactCount(extended.data.adoption.users.wau) : '—'} icon={Users} to="/dashboard/value" />
-        <KpiCard label={t('dashboard.stats.activeSkillRatio')} value={extended.data?.value ? formatPercent(extended.data.value.activeSkills.ratio) : '—'} icon={Package} to="/dashboard/value" />
-        <KpiCard label={t('dashboard.stats.avgRating')} value={extended.data?.quality?.ratings?.avgScore == null ? '—' : extended.data.quality.ratings.avgScore.toFixed(1)} icon={Star} to="/dashboard/quality" />
-        <KpiCard label={t('dashboard.stats.reviewP50')} value={extended.data ? formatHours(extended.data.efficiency?.review?.p50h) : '—'} icon={Clock} to="/dashboard/quality" />
+        <KpiCard label={t('dashboard.stats.activeSkillRatio')} value={core?.active ? formatPercent(core.active.ratio) : '—'} hint={core?.active?.active30d != null ? `${core.active.active30d} / ${core.active.published}` : undefined} icon={Package} to="/dashboard/value" />
+        <KpiCard label={t('dashboard.stats.avgRating')} value={core?.rating?.avg == null ? '—' : core.rating.avg.toFixed(1)} hint={core?.rating?.ratedCount30d != null ? t('dashboard.stats.avgRatingHint', { count: core.rating.ratedCount30d }) : undefined} icon={Star} to="/dashboard/quality" />
+        <KpiCard label={t('dashboard.stats.triggerRate')} value={core?.triggered ? formatPercent(core.triggered.ratio) : '—'} hint={core?.triggered ? t('dashboard.stats.triggerRateHint', { count: core.triggered.count, total: core.triggered.total }) : undefined} icon={CircleDot} to="/dashboard/value" />
+        <KpiCard label={t('dashboard.stats.manhours')} value={core?.manhours?.hoursPerMonth != null ? formatHours(core.manhours.hoursPerMonth) : '—'} hint={core?.manhours?.enabled ? t('dashboard.stats.manhoursHint', { hours: core.manhours.perActiveSkillHours }) : t('dashboard.stats.manhoursDisabled')} icon={Gauge} to="/dashboard/value" />
+        <KpiCard label={t('dashboard.stats.mau')} value={core?.mau == null ? '—' : formatCompactCount(core.mau)} icon={Users} to="/dashboard/value" />
       </div>
 
       {/* 趋势图 */}
@@ -278,8 +255,8 @@ function DashboardStatsSection() {
         </div>
       </div>
 
-      {/* 分布 + Top10 */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+      {/* 分布 + Top10 双榜（下载 / 调用） */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="rounded-xl border border-border/60 bg-background p-4">
           <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.statusDist')}</h3>
           <div className="h-48">
@@ -329,11 +306,29 @@ function DashboardStatsSection() {
             ))}
           </ul>
         </div>
-        <div className="col-span-1 rounded-xl border border-border/60 bg-background p-4 xl:col-span-2">
+        <div className="rounded-xl border border-border/60 bg-background p-4">
           <h3 className="mb-3 text-sm font-semibold">{t('dashboard.stats.topDownloads')}</h3>
           {top.data && top.data.downloads.length > 0 ? (
             <ol className="space-y-1.5">
               {top.data.downloads.map((item, index) => (
+                <li key={item.id} className="flex items-center gap-2 text-xs">
+                  <span className="w-5 shrink-0 text-center font-semibold tabular-nums" style={{ color: index < 3 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }}>{index + 1}</span>
+                  <Link to="/space/$namespace/$slug" params={{ namespace: item.ns, slug: item.slug }} className="min-w-0 flex-1 truncate hover:underline">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="ml-1" style={{ color: 'hsl(var(--muted-foreground))' }}>@{item.ns}/{item.slug}</span>
+                  </Link>
+                  <span className="shrink-0 tabular-nums" style={{ color: 'hsl(var(--muted-foreground))' }}>{formatCompactCount(item.value)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : <div className="flex h-48 items-center justify-center text-xs" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.noData')}</div>}
+        </div>
+        <div className="rounded-xl border border-border/60 bg-background p-4">
+          <h3 className="mb-1 text-sm font-semibold">{t('dashboard.stats.topCalls')}</h3>
+          <p className="mb-3 text-[11px]" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('dashboard.stats.topCallsHint')}</p>
+          {top.data && top.data.calls && top.data.calls.length > 0 ? (
+            <ol className="space-y-1.5">
+              {top.data.calls.map((item, index) => (
                 <li key={item.id} className="flex items-center gap-2 text-xs">
                   <span className="w-5 shrink-0 text-center font-semibold tabular-nums" style={{ color: index < 3 ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))' }}>{index + 1}</span>
                   <Link to="/space/$namespace/$slug" params={{ namespace: item.ns, slug: item.slug }} className="min-w-0 flex-1 truncate hover:underline">
