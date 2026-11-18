@@ -70,7 +70,7 @@ function signEvidence(name, digest, run) {
     gate_run_id: run.id,
     eval_run_id: run.kind === 'eval' ? run.id : undefined,
     level: run.level,
-    status: 'passed',
+    status: run.status === 'degraded' ? 'degraded' : 'passed',
     released: true,
     signed_at: new Date().toISOString(),
     stages: summaryOf(run.stages),
@@ -121,8 +121,11 @@ export async function executeGate(run, { source }, onProgress = () => {}) {
     }
 
     run.stages = stages;
-    run.status = stages.every((s) => s.status !== 'fail') ? 'passed' : 'failed';
-    if (run.status === 'passed') run.evidence = signEvidence(src.name, src.digest, run);
+    // degraded（judge 不可用、仅规则合取通过）不能吞成 passed：状态原样透传，证据同步真实状态（M6）
+    const hasFail = stages.some((s) => s.status === 'fail');
+    const hasDegraded = stages.some((s) => s.status === 'degraded');
+    run.status = hasFail ? 'failed' : hasDegraded ? 'degraded' : 'passed';
+    if (run.status !== 'failed') run.evidence = signEvidence(src.name, src.digest, run);
     run.finished_at = Date.now();
     saveRun('gate', run);
     return run;
@@ -163,8 +166,11 @@ export async function executeEval(run, { source }, onProgress = () => {}) {
       { skillBody: skillMd?.text || '', skillDesc: matter(skillMd?.text || '').data?.description || '', dataset },
       onProgress,
     );
-    run.status = run.stages.every((s) => s.status !== 'fail') ? 'passed' : 'failed';
-    if (run.status === 'passed') run.evidence = signEvidence(src.name, src.digest, run);
+    // degraded 同样透传，不得吞成 passed（M6）
+    const hasFail = run.stages.some((s) => s.status === 'fail');
+    const hasDegraded = run.stages.some((s) => s.status === 'degraded');
+    run.status = hasFail ? 'failed' : hasDegraded ? 'degraded' : 'passed';
+    if (run.status !== 'failed') run.evidence = signEvidence(src.name, src.digest, run);
     run.finished_at = Date.now();
     saveRun('eval', run);
     return run;
@@ -469,8 +475,14 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
     }
 
     const answer = await forwardCreate(message, history, emit, mcpBindings, draft_id);
-    // 提取产出（若有）→ card 供前端预览保存
-    const art = extractArtifacts(answer);
+    // 提取产出（若有）→ card 供前端预览保存；提取失败（如 frontmatter 非法导致 matter 抛错）
+    // 回提示 card 而非让整条 SSE 流 error 断掉（M11）
+    let art = { markdown: null, files: [], name: null };
+    try {
+      art = extractArtifacts(answer);
+    } catch (e) {
+      emit('card', { type: 'hint', payload: { text: `⚠ 产出提取失败（frontmatter 可能不合法）：${e.message || e}，请检查生成内容后重试` } });
+    }
     if (art.markdown) {
       if (draft_id) {
         // 草稿已存在（迭代/修复轮）：服务端直接落盘新版 → 立即自动检查 → 结果以 card 回流，
@@ -647,6 +659,6 @@ function resultText(run) {
     const metric = m.accuracy !== undefined ? `通过率 ${Math.round(m.accuracy * 100)}%（${m.passed}/${m.total}，阈值 ${s.threshold}）` : '';
     return `${s.title}：${s.status}${metric ? '，' + metric : ''}`;
   });
-  const head = run.status === 'passed' ? '通过' : '未通过';
+  const head = run.status === 'passed' ? '通过' : run.status === 'degraded' ? '通过（降级：judge 不可用，仅规则合取）' : '未通过';
   return `${head}｜${parts.join('；')}${run.evidence ? `｜证据已签发 ${run.evidence.digest.slice(0, 12)}…` : ''}`;
 }

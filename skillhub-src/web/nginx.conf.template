@@ -57,6 +57,20 @@ map "$skillhub_api_anon:$skillhub_api_public_uri" $skillhub_api_gate_deny {
     "1:1"   0;
 }
 
+# ── 技能构建子系统门禁（/gate-api/ /build-api/）：仅会话 Cookie 放行 ──
+# gate-service / skill-build-agent 自身无用户身份（GATE_TOKEN 为可选共享令牌），
+# 匿名透传 = 任何人可读写草稿、烧 LLM 配额；仅 gate healthz 例外（外网探活）
+map $uri $skillhub_build_public_uri {
+    default                    0;
+    ~^/gate-api/v1/healthz$    1;
+}
+map "$skillhub_auth_ok:$skillhub_build_public_uri" $skillhub_build_gate_deny {
+    default 1;
+    "1:0"   0;
+    "1:1"   0;
+    "0:1"   0;
+}
+
 server {
     listen 80;
     server_name _;
@@ -174,8 +188,12 @@ server {
     }
 
     # ── 技能构建网关（gate-service）：前端自带 Authorization，nginx 不注入 ──
+    # 登录门禁：无会话 Cookie 一律 401（healthz 例外），防匿名读写草稿/烧 LLM
     set $gate_api_upstream "${GATE_API_UPSTREAM}";
     location /gate-api/ {
+        if ($skillhub_build_gate_deny) {
+            return 401 '{"code":401,"msg":"Login required"}';
+        }
         proxy_pass $gate_api_upstream;
         rewrite ^/gate-api(/.*)$ $1 break;
         proxy_set_header Host $host;
@@ -190,8 +208,12 @@ server {
     }
 
     # ── skill-build-agent（对话创建 / 技能库）──
+    # 登录门禁：无会话 Cookie 一律 401（与 /gate-api/ 同一子系统）
     set $build_agent_upstream "${BUILD_AGENT_UPSTREAM}";
     location /build-api/ {
+        if ($skillhub_build_gate_deny) {
+            return 401 '{"code":401,"msg":"Login required"}';
+        }
         proxy_pass $build_agent_upstream;
         rewrite ^/build-api(/.*)$ $1 break;
         proxy_set_header Host $host;

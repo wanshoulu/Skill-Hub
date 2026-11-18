@@ -35,6 +35,9 @@ const PORT = Number(process.env.PORT || 3002);
 const VERSION = '0.1.0';
 const MAX_UPLOAD = 50 * 1024 * 1024; // 50MB
 
+// 同草稿运行中任务表（gate/eval 并发互斥；进程级，重启清空无害）
+const runningDraftTasks = new Set();
+
 const ok = (res, data, code = 0) => json(res, 200, { code, msg: 'ok', data });
 const fail = (res, status, msg) => json(res, status, { code: status, msg, data: null });
 
@@ -106,7 +109,7 @@ function safeDraftPath(base, rel) {
   return p;
 }
 
-async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = null }) {
+async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = null }, owner = 'local') {
   fs.mkdirSync(path.join(dir, 'files'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'SKILL.md'), markdown, 'utf8');
   for (const f of files) {
@@ -120,13 +123,13 @@ async function writeDraftTo(dir, id, { name, markdown, files = [], dataset = nul
     fs.mkdirSync(path.join(dir, 'evals'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'evals', 'dataset.yaml'), dataset, 'utf8');
   }
-  const meta = { id, name, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset), mcp_bindings: [] };
+  const meta = { id, name, owner, created_at: Date.now(), updated_at: Date.now(), has_dataset: Boolean(dataset), mcp_bindings: [] };
   fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
   return meta;
 }
 
-async function writeDraft(id, body) {
-  const meta = await writeDraftTo(draftDir(id), id, body);
+async function writeDraft(id, body, owner) {
+  const meta = await writeDraftTo(draftDir(id), id, body, owner);
   // 恢复 created_at 和 mcp_bindings（writeDraftTo 不读旧 meta）
   const old = readJson(`drafts/${id}/meta.json`);
   if (old?.created_at && meta.created_at !== old.created_at) {
@@ -170,6 +173,11 @@ function draftView(meta) {
 }
 
 // ── 路由 ─────────────────────────────────────────────────────────
+
+// 当前用户身份：鉴权层（nginx）注入 X-Forwarded-User 时按用户隔离；无身份头（单管理员部署）固定 'local'
+function currentUser(req) {
+  return String(req.headers['x-forwarded-user'] || '').trim() || 'local';
+}
 
 async function route(req, res) {
   const url = new URL(req.url, 'http://x');
@@ -446,14 +454,18 @@ async function route(req, res) {
     catch { return fail(res, 400, '请求体不是有效的 JSON'); }
     if (!body.name || !body.markdown) return fail(res, 400, '需要 name 与 markdown');
     const id = newDraftId();
-    const meta = await writeDraft(id, body);
+    const meta = await writeDraft(id, body, currentUser(req));
     autoCheckDraft(id); // 保存即检查（异步，结果写 meta.last_check 与 gate run 列表）
     return ok(res, draftView(meta));
   }
   if (p === '/v1/drafts' && method === 'GET') {
+    const owner = currentUser(req);
     const dir = dirOf('drafts');
     const list = fs.existsSync(dir)
-      ? fs.readdirSync(dir).map((id) => readJson(`drafts/${id}/meta.json`)).filter(Boolean).map(draftView)
+      ? fs.readdirSync(dir).map((id) => readJson(`drafts/${id}/meta.json`)).filter(Boolean)
+        // 草稿按 owner 隔离；无 owner 字段的旧草稿视为公共，向后兼容
+        .filter((m) => !m.owner || m.owner === owner)
+        .map(draftView)
       : [];
     list.sort((a, b) => b.updated_at - a.updated_at);
     return ok(res, list);
@@ -464,6 +476,9 @@ async function route(req, res) {
     const id = draftM[1];
     const meta = readJson(`drafts/${id}/meta.json`);
     if (!meta) return fail(res, 404, `草稿不存在：${id}`);
+    // 归属校验：无 owner 的旧草稿放行（向后兼容），有 owner 且不匹配则拒绝
+    const owner = currentUser(req);
+    if (meta.owner && meta.owner !== owner) return fail(res, 403, '无权访问该草稿');
 
     if (method === 'GET' && !draftM[2]) return ok(res, { ...draftView(meta), markdown: readDraftMarkdown(id) });
     if (method === 'PUT' && !draftM[2]) {
@@ -476,7 +491,7 @@ async function route(req, res) {
       fs.mkdirSync(tmpDir, { recursive: true });
       const backupBuf = fs.existsSync(path.join(dir, 'SKILL.md')) ? fs.readFileSync(path.join(dir, 'SKILL.md')) : null;
       try {
-        writeDraftTo(tmpDir, id, body);
+        writeDraftTo(tmpDir, id, body, owner);
       } catch (e) {
         fs.rmSync(tmpDir, { recursive: true, force: true });
         throw e;
@@ -484,7 +499,8 @@ async function route(req, res) {
       // 保留旧 history 目录
       const oldHist = path.join(dir, 'history');
       if (fs.existsSync(oldHist)) {
-        fsp.cp(oldHist, path.join(tmpDir, 'history'), { recursive: true }).catch(() => {});
+        // 必须 await：否则 rm(dir) 与 cp 并发，history 可能拷到一半源目录就被删了（M7）
+        await fsp.cp(oldHist, path.join(tmpDir, 'history'), { recursive: true }).catch(() => {});
       }
       await fsp.rm(dir, { recursive: true, force: true });
       fs.renameSync(tmpDir, dir);
@@ -552,9 +568,21 @@ async function route(req, res) {
     const kind = p.includes('gate') ? 'gate' : 'eval';
     const begin = kind === 'gate' ? beginGate : beginEval;
     const execute = kind === 'gate' ? executeGate : executeEval;
+    // 同草稿同类任务互斥：测评/扫描要跑数分钟，重复点击会并发多个 run 互相抢 LLM 配额（M8）
+    const draftKey = source.type === 'draft' ? `${kind}:${source.id}` : null;
+    if (draftKey && runningDraftTasks.has(draftKey)) {
+      return fail(res, 409, `该草稿已有${kind === 'gate' ? '检查扫描' : '测评'}任务在执行中，请等待完成后再发起`);
+    }
     const run = begin({ level, ns });
     // 后台执行；basic 秒级，runtime 可能数分钟，客户端轮询 GET /runs/:id
-    execute(run, { source }).catch(() => {});
+    if (draftKey) {
+      runningDraftTasks.add(draftKey);
+      execute(run, { source })
+        .catch(() => {})
+        .finally(() => runningDraftTasks.delete(draftKey));
+    } else {
+      execute(run, { source }).catch(() => {});
+    }
     return ok(res, { run_id: run.id, kind });
   }
 

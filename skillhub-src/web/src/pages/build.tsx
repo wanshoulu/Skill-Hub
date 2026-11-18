@@ -268,6 +268,8 @@ export function BuildPage() {
       setDraftName(d.name)
       setDraftMd(d.markdown)
       if (d.mcp_bindings) setDraftMcpBindings(d.mcp_bindings)
+      // 显式从服务端对齐草稿（技能库打开/采纳候选）视为继续编辑该草稿
+      sessionDraftEstablished.current = true
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e))
     }
@@ -289,6 +291,7 @@ export function BuildPage() {
       }
       const saved = draftId ? await updateDraftOrRecreate(draftId, payload) : await saveDraft(payload)
       setDraftId(saved.id)
+      sessionDraftEstablished.current = true // 用户显式保存：此后自动保存可继续复用该草稿（H4）
       toast.success(`草稿已保存（${saved.id}）`)
       return saved.id
     } catch (e) {
@@ -329,6 +332,11 @@ export function BuildPage() {
   draftIdRef.current = draftId
   const draftMdRef = useRef(draftMd)
   draftMdRef.current = draftMd
+  const draftMcpBindingsRef = useRef(draftMcpBindings)
+  draftMcpBindingsRef.current = draftMcpBindings
+  // 本会话是否已建立草稿（新建或显式保存/打开后为 true）：false 时不复用恢复的旧 draft_id
+  // 自动保存，避免 IndexedDB 恢复的旧草稿被新技能产出静默改写（H4）
+  const sessionDraftEstablished = useRef(false)
 
   // 卡片处理：更新工作区 + 落进对话流
   const handleCard = useCallback(
@@ -339,6 +347,11 @@ export function BuildPage() {
           const name = String(p.name || '未命名技能')
           const markdown = String(p.markdown || '')
           const files = Array.isArray(p.files) ? (p.files as GateDraftFile[]) : []
+          // 新技能产出到达：清空上一轮检查/测评/进化结果，避免旧结论残留误导（M13）
+          setGateRun(null)
+          setEvalRun(null)
+          setEvolveJob(null)
+          setFixPending(false)
           setDraftName((prev) => prev || name)
           setDraftMd(markdown)
           if (files.length) setDraftFiles(files)
@@ -352,10 +365,20 @@ export function BuildPage() {
           // 自动保存（dataset 沿用当前内容）；保存即检查（服务端异步），延迟刷新 run 历史
           void (async () => {
             try {
-              const payload = { name: draftNameRef.current.trim() || name, markdown, files, dataset: datasetYamlRef.current.trim() || null }
-              const saved = draftIdRef.current ? await updateDraftOrRecreate(draftIdRef.current, payload) : await saveDraft(payload)
+              // 新会话首个产出必须新建草稿（未显式建立时不复用旧 draft_id，H4）；
+              // 新建草稿优先用 agent 给出的名字，继续编辑旧草稿才沿用工作区名
+              const estId = sessionDraftEstablished.current ? draftIdRef.current : null
+              const payload = {
+                name: (estId ? draftNameRef.current.trim() : '') || name,
+                markdown,
+                files,
+                dataset: datasetYamlRef.current.trim() || null,
+                mcp_bindings: draftMcpBindingsRef.current, // 与手动保存对齐，缺了会把绑定抹掉（M14）
+              }
+              const saved = estId ? await updateDraftOrRecreate(estId, payload) : await saveDraft(payload)
+              sessionDraftEstablished.current = true
               setDraftId(saved.id)
-              setDraftName(draftNameRef.current.trim() || name)
+              setDraftName(payload.name)
               toast.success(`草稿已自动保存（${saved.id}）`)
               setTimeout(() => void loadGateHistory(saved.id), 2500)
               setTimeout(() => void loadGateHistory(saved.id), 6000)
@@ -511,10 +534,19 @@ export function BuildPage() {
     setGateRun(null)
     try {
       const { run_id } = await startGateRun(id, gateLevel)
+      let errStreak = 0
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         if (!mountedRef.current) return
-        const run = await getRun('gate', run_id)
+        let run: Awaited<ReturnType<typeof getRun>>
+        try {
+          run = await getRun('gate', run_id)
+          errStreak = 0
+        } catch (err) {
+          // 轮询瞬时错误（网络抖动/网关重启）不终止，连续 3 次才放弃（M12）
+          if (++errStreak >= 3) throw err
+          continue
+        }
         if (!mountedRef.current) return
         setGateRun(run)
         // 手动检查同样驱动修复按钮状态（gate_stages 只覆盖对话内检查路径）
@@ -538,10 +570,18 @@ export function BuildPage() {
     setEvalRun(null)
     try {
       const { run_id } = await startEvalRun(id)
+      let errStreak = 0
       for (let i = 0; i < 150; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         if (!mountedRef.current) return
-        const run = await getRun('eval', run_id)
+        let run: Awaited<ReturnType<typeof getRun>>
+        try {
+          run = await getRun('eval', run_id)
+          errStreak = 0
+        } catch (err) {
+          if (++errStreak >= 3) throw err
+          continue
+        }
         if (!mountedRef.current) return
         setEvalRun(run)
         if (run.status !== 'running') break
@@ -561,10 +601,18 @@ export function BuildPage() {
     setEvolveJob(null)
     try {
       const { job_id } = await startEvolve(id, 3)
+      let errStreak = 0
       for (let i = 0; i < 450; i++) {
         await new Promise((r) => setTimeout(r, 2000))
         if (!mountedRef.current) return
-        const job = await getEvolveJob(job_id)
+        let job: Awaited<ReturnType<typeof getEvolveJob>>
+        try {
+          job = await getEvolveJob(job_id)
+          errStreak = 0
+        } catch (err) {
+          if (++errStreak >= 3) throw err
+          continue
+        }
         if (!mountedRef.current) return
         setEvolveJob(job)
         if (job.status !== 'running') break

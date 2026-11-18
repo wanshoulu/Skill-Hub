@@ -706,6 +706,7 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
   const decoder = new TextDecoder()
   let buf = ''
   let stallTimer: ReturnType<typeof setTimeout> | null = null
+  let sawDone = false // 是否收到正常收尾事件（done）；否则视为中途断流（H5）
   const armStall = (reject: (e: Error) => void) => {
     if (stallTimer) clearTimeout(stallTimer)
     stallTimer = setTimeout(() => {
@@ -734,9 +735,12 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
                 case 'phase':
                   if (ev.data && typeof ev.data === 'object') h.onPhase?.(ev.data as AgentPhaseEvent)
                   break
-                case 'token':
-                  h.onToken?.(String((ev.data as { text?: string })?.text ?? ''))
+                case 'token': {
+                  // build-agent 的 token 事件字段历史上有 text / content 两种形态，双兼容
+                  const d = ev.data as { text?: string; content?: string } | null
+                  h.onToken?.(String(d?.text ?? d?.content ?? ''))
                   break
+                }
                 case 'skill_load':
                   h.onSkillLoad?.(String((ev.data as { skill?: string })?.skill ?? ''))
                   break
@@ -753,14 +757,22 @@ export async function streamAgentChat(req: AgentChatRequest): Promise<void> {
                   h.onError?.(String((ev.data as { error?: string })?.error ?? '未知错误'))
                   break
                 case 'hb':
+                  break
                 case 'done':
+                  // 服务端（server.js）在 agentChat 结束后总会发 done；用它区分正常收尾与中途断流
+                  sawDone = true
                   break
                 default:
                   break
               }
             }
           }
-          resolve()
+          if (sawDone) {
+            resolve()
+          } else {
+            // 服务端 FIN 了但没发 done：视为中途断流，明确报错而非静默当成功（H5）
+            reject(new Error('连接中断：服务端提前关闭了数据流（未收到完成事件），已收内容已保留'))
+          }
         } catch (e) {
           reject(e instanceof Error ? e : new Error(String(e)))
         }

@@ -58,7 +58,28 @@ export function readRun(kind, id) {
   return readJson(`runs/${kind}/${id}.json`);
 }
 
+// ── runs 清理：超过保留期的 run 文件每日清一次（listRuns 触发）──
+const RUN_RETENTION_MS = Number(process.env.RUN_RETENTION_DAYS || 30) * 86_400_000;
+let lastRunCleanAt = 0;
+function cleanOldRuns() {
+  const now = Date.now();
+  if (now - lastRunCleanAt < 86_400_000) return;
+  lastRunCleanAt = now;
+  for (const kind of ['gate', 'eval', 'evolve']) {
+    const dir = path.join(DATA_DIR, 'runs', kind);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const abs = path.join(dir, f);
+        if (now - fs.statSync(abs).mtimeMs > RUN_RETENTION_MS) fs.rmSync(abs, { force: true });
+      } catch { /* 单文件失败跳过 */ }
+    }
+  }
+}
+
 export function listRuns(kind) {
+  cleanOldRuns();
   const dir = path.join(DATA_DIR, 'runs', kind);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
