@@ -9,8 +9,8 @@ const DESC_MAX = 1024;
 const COMPAT_MAX = 500;
 const BODY_LINE_WARN = 500;
 
-// 允许的 frontmatter 字段（规范白名单）
-const ALLOWED_META = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools']);
+// 允许的 frontmatter 字段（规范白名单；mcp_tools 由 syncSkillMd/mcp-skillmd 确定性回写，属平台自有字段）
+const ALLOWED_META = new Set(['name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools', 'mcp_tools']);
 
 // 每条 finding: {level: fail|warn, rule, message, file}
 // 占位样例豁免：文档里写 "sk-xxxxxxxx" / "your-api-key" 这类不算命中
@@ -179,23 +179,51 @@ export function runBasic({ name, files }) {
     { re: /\bsk-[A-Za-z0-9_-]{20,}/, level: 'fail', rule: 'api-key', message: '疑似 API Key（sk- 形态）', skip: PLACEHOLDER },
     { re: /\bAKIA[0-9A-Z]{16}\b/, level: 'fail', rule: 'aws-key', message: '疑似 AWS AccessKey', skip: PLACEHOLDER },
     { re: /(?:access[_-]?key|secret[_-]?key)["'\s:=]{1,3}["']?[\w\-]{16,}/i, level: 'fail', rule: 'ak-sk-pair', message: '疑似 AK/SK 硬编码', skip: PLACEHOLDER },
-    { re: /password\s*[=:]\s*["']?[^\s"'{}]{6,}/i, level: 'fail', rule: 'password', message: '疑似明文密码', skip: PLACEHOLDER },
+    { re: /(?:password|passwd|pwd)\s*[=:]\s*["']?[^\s"'{}]{6,}/i, level: 'fail', rule: 'password', message: '疑似明文密码', skip: PLACEHOLDER },
     { re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/, level: 'fail', rule: 'private-key', message: '包含私钥块' },
     { re: /\bbearer\s+[A-Za-z0-9\-._~+/]{20,}/i, level: 'fail', rule: 'bearer-token', message: '疑似 Bearer Token', skip: PLACEHOLDER },
-    { re: /\b(?:ghp|gho|github_pat)_[A-Za-z0-9_]{20,}\b/, level: 'fail', rule: 'github-token', message: '疑似 GitHub Token', skip: PLACEHOLDER },
+    { re: /\b(?:ghp|gho|ghu|ghs|github_pat)_[A-Za-z0-9_]{20,}\b/, level: 'fail', rule: 'github-token', message: '疑似 GitHub Token', skip: PLACEHOLDER },
     { re: /\beyJ[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{10,}\./, level: 'fail', rule: 'jwt', message: '疑似 JWT Token', skip: PLACEHOLDER },
     // Google API Key（AIza 开头）
     { re: /\bAIza[0-9A-Za-z\-_]{35}\b/, level: 'fail', rule: 'google-api-key', message: '疑似 Google API Key', skip: PLACEHOLDER },
-    // Slack Bot/User Token（xox[bp]- 开头）
-    { re: /\bxox[bp]-[0-9A-Za-z-]{10,}/, level: 'fail', rule: 'slack-token', message: '疑似 Slack Token', skip: PLACEHOLDER },
+    // Google OAuth Token（ya29. 开头）
+    { re: /\bya29\.[A-Za-z0-9\-_]{20,}\b/, level: 'fail', rule: 'google-oauth-token', message: '疑似 Google OAuth Token', skip: PLACEHOLDER },
+    // GCP 服务账号密钥 JSON（"type":"service_account"）
+    { re: /"type"\s*:\s*"service_account"/, level: 'fail', rule: 'gcp-service-account', message: '疑似 GCP 服务账号密钥 JSON', skip: PLACEHOLDER },
+    // Slack Bot/User/App Token（xox[bp]- / xapp-1- 开头）
+    { re: /\bxox[bp]-[0-9A-Za-z-]{10,}|xapp-1-[A-Za-z0-9_-]{10,}/, level: 'fail', rule: 'slack-token', message: '疑似 Slack Token', skip: PLACEHOLDER },
     // Stripe Secret Key（sk_live_ / sk_test_ 开头，与 api-key 的 sk- 区分）
     { re: /\bsk_(?:live|test)_[0-9a-zA-Z]{20,}/, level: 'fail', rule: 'stripe-key', message: '疑似 Stripe Secret Key', skip: PLACEHOLDER },
+    // Stripe Webhook 签名密钥（whsec_ 开头）
+    { re: /\bwhsec_[A-Za-z0-9]{24,}\b/, level: 'fail', rule: 'stripe-webhook-secret', message: '疑似 Stripe Webhook 签名密钥', skip: PLACEHOLDER },
     // Tencent Cloud SecretId（AKID 开头）
     { re: /\bAKID[0-9A-Za-z]{32,}\b/, level: 'fail', rule: 'tencent-key', message: '疑似腾讯云 SecretId', skip: PLACEHOLDER },
-    // Twilio API Key（SK 开头 32 位）
+    // Alibaba Cloud AccessKey（LTAI 开头）
+    { re: /\bLTAI[0-9A-Za-z]{12,20}\b/, level: 'fail', rule: 'aliyun-key', message: '疑似阿里云 AccessKey', skip: PLACEHOLDER },
+    // Twilio API Key（SK 开头 32 位十六进制）
     { re: /\bSK[0-9a-fA-F]{32}\b/, level: 'fail', rule: 'twilio-key', message: '疑似 Twilio API Key', skip: PLACEHOLDER },
-    // 连接字符串中的密码
-    { re: /(?:mongodb|postgres|mysql|redis):\/\/[^\s:@]+:[^\s@/]{6,}@/i, level: 'fail', rule: 'connection-string-creds', message: '数据库连接字符串含内嵌密码', skip: PLACEHOLDER },
+    // GitLab Personal Access Token（glpat- 开头）
+    { re: /\bglpat-[A-Za-z0-9_-]{20,}\b/, level: 'fail', rule: 'gitlab-token', message: '疑似 GitLab Token', skip: PLACEHOLDER },
+    // DigitalOcean Token（dop_v1_ 开头）
+    { re: /\bdop_v1_[a-f0-9]{64}\b/, level: 'fail', rule: 'digitalocean-token', message: '疑似 DigitalOcean Token', skip: PLACEHOLDER },
+    // npm 发布 Token（npm_ 开头 36 位）
+    { re: /\bnpm_[A-Za-z0-9]{36}\b/, level: 'fail', rule: 'npm-token', message: '疑似 npm 发布 Token', skip: PLACEHOLDER },
+    // PyPI 发布 Token（pypi- 开头）
+    { re: /\bpypi-[A-Za-z0-9_-]{20,}\b/, level: 'fail', rule: 'pypi-token', message: '疑似 PyPI 发布 Token', skip: PLACEHOLDER },
+    // Hugging Face Token（hf_ 开头）
+    { re: /\bhf_[A-Za-z0-9]{20,}\b/, level: 'fail', rule: 'huggingface-token', message: '疑似 Hugging Face Token', skip: PLACEHOLDER },
+    // SendGrid API Key（SG. 开头）
+    { re: /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\b/, level: 'fail', rule: 'sendgrid-key', message: '疑似 SendGrid API Key', skip: PLACEHOLDER },
+    // Atlassian API Token（ATATT 开头）
+    { re: /\bATATT[A-Za-z0-9_-]{20,}\b/, level: 'fail', rule: 'atlassian-token', message: '疑似 Atlassian API Token', skip: PLACEHOLDER },
+    // Shopify Token（shpat_/shpca_/shppa_ 开头）
+    { re: /\bshp(?:at|ca|pa)_[a-fA-F0-9]{32}\b/, level: 'fail', rule: 'shopify-token', message: '疑似 Shopify Token', skip: PLACEHOLDER },
+    // Figma Token（figd_ 开头）
+    { re: /\bfigd_[A-Za-z0-9_-]{20,}\b/, level: 'fail', rule: 'figma-token', message: '疑似 Figma Token', skip: PLACEHOLDER },
+    // Azure Storage Account Key（AccountKey= 形态，Base64 88 字符）
+    { re: /AccountKey=[A-Za-z0-9+/]{52,}={0,2}/, level: 'fail', rule: 'azure-storage-key', message: '疑似 Azure Storage AccountKey', skip: PLACEHOLDER },
+    // 连接字符串中的密码（mongodb/postgres/mysql/redis/amqp/ftp 等协议）
+    { re: /(?:mongodb|postgresql|postgres|mysql|redis|amqp|ftp|sftp):\/\/[^\s:@]+:[^\s@/]{6,}@/i, level: 'fail', rule: 'connection-string-creds', message: '数据库连接字符串含内嵌密码', skip: PLACEHOLDER },
   ];
   for (const f of files) {
     if (!f.text) continue;
@@ -327,42 +355,42 @@ export function runBasic({ name, files }) {
   if (meta) {
     const md = meta.metadata || {};
     // COMP-001: 数据分级声明
-    if (!md.data_classification && !/\bdata[_\s-]?classification\b/i.test(body)) {
+    if (!md.data_classification && !/\bdata[_\s-]?classification\b/i.test(body) && !/数据分级|数据分类|敏感等级/.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-001', message: '缺少数据分级声明（metadata.data_classification），企业部署需标记敏感等级', file: 'SKILL.md' });
     }
     // COMP-002: PII 处理声明
-    if (/\bpii\b|\bpersonal\s*(data|information)\b/i.test(body) && !/\b(anonymiz|pseudonymiz|redact|minim|encrypt)\w*\b/i.test(body)) {
+    if (/\bpii\b|\bpersonal\s*(data|information)\b|个人信息|个人数据/i.test(body) && !/\b(anonymiz|pseudonymiz|redact|minim|encrypt)\w*\b|脱敏|匿名化|假名化|最小化|加密/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-002', message: '正文涉及 PII 但未声明处理措施（匿名化/脱敏/最小化/加密）', file: 'SKILL.md' });
     }
     // COMP-003: PHI 处理声明（医疗健康，HIPAA）
-    if (/\bphi\b|\bprotected\s*health\b|\bpatient\s*(data|record|information)\b/i.test(body) && !/\b(hipaa|baa|minimum\s*necessary|de-identif)\w*\b/i.test(body)) {
+    if (/\bphi\b|\bprotected\s*health\b|\bpatient\s*(data|record|information)\b|受保护健康信息|患者数据|患者记录|病历/i.test(body) && !/\b(hipaa|baa|minimum\s*necessary|de-identif)\w*\b|去标识化|最小必要/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-003', message: '正文涉及 PHI 但未声明 HIPAA 合规措施（BAA/最小必要/去标识化）', file: 'SKILL.md' });
     }
     // COMP-004: CHD 处理声明（支付场景，PCI-DSS）
-    if (/\bcard(?:holder)?\s*(data|number|info)|\bpan\b|\bpci[-\s]?dss\b/i.test(body) && !/\b(tokeniz|encrypt|truncat|mask|pci[-\s]?dss)\w*\b/i.test(body)) {
+    if (/\bcard(?:holder)?\s*(data|number|info)|\bpan\b|\bpci[-\s]?dss\b|持卡人数据|持卡人信息|银行卡号/i.test(body) && !/\b(tokeniz|encrypt|truncat|mask|pci[-\s]?dss)\w*\b|标记化|加密|脱敏/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-004', message: '正文涉及持卡人数据但未声明 PCI-DSS 合规措施（标记化/加密/截断/脱敏）', file: 'SKILL.md' });
     }
     // COMP-005: 审计日志声明
-    if (!/\b(audit\s*log|logging|audit\s*trail|log\s*entry)\b/i.test(body)) {
+    if (!/\b(audit\s*log|logging|audit\s*trail|log\s*entry)\b|审计日志|审计记录|操作日志|处理摘要/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-005', message: '缺少审计日志声明（SOX/FINRA 要求技能执行可追溯）', file: 'SKILL.md' });
     }
     // COMP-006: 数据保留策略（处理敏感数据时）
-    if ((md.data_classification || /\bpii\b|\bphi\b/i.test(body)) && !/\b(retention|retain|delete|purge|expir)\w*\b/i.test(body)) {
+    if ((md.data_classification || /\bpii\b|\bphi\b|个人信息|个人数据|敏感数据/i.test(body)) && !/\b(retention|retain|delete|purge|expir)\w*\b|保留|留存|清除|删除|过期/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-006', message: '处理敏感数据但缺少数据保留/清除策略声明', file: 'SKILL.md' });
     }
     // COMP-007: 人工审查声明（EU AI Act 高风险系统要求）
-    if (!/\b(human\s*(review|oversight|approval|in[-\s]the[-\s]loop)|manual\s*(review|verification))\b/i.test(body)) {
+    if (!/\b(human\s*(review|oversight|approval|in[-\s]the[-\s]loop)|manual\s*(review|verification))\b|人工审查|人工复核|人工监督|人工审核|人工确认/i.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-007', message: '缺少人工审查声明（EU AI Act 高风险 AI 系统要求人工监督）', file: 'SKILL.md' });
     }
     // COMP-008: 免责声明（金融/健康/法律领域）
-    const domainRe = /\b(financial|finance|investment|trading|stock|medical|health|clinical|diagnos|legal|law|attorney)\b/i;
+    const domainRe = /\b(financial|finance|investment|trading|stock|medical|health|clinical|diagnos|legal|law|attorney)\b|金融|投资|交易|股票|医疗|健康|临床|诊断|法律/i;
     if (domainRe.test(body) || domainRe.test(meta.description || '')) {
-      if (!/\b(disclaimer|not\s*(a|an)\s*(financial|medical|legal)\s*(advisor|professional)|consult\s*(a|an|your)\s*(professional|advisor|expert|doctor|attorney))\b/i.test(body)) {
+      if (!/\b(disclaimer|not\s*(a|an)\s*(financial|medical|legal)\s*(advisor|professional)|consult\s*(a|an|your)\s*(professional|advisor|expert|doctor|attorney))\b|免责声明|非专业|仅供参考/i.test(body)) {
         govFindings.push({ level: 'warn', rule: 'COMP-008', message: '涉及金融/健康/法律领域但缺少免责声明（应声明"非专业建议，请咨询专业人士"）', file: 'SKILL.md' });
       }
     }
     // COMP-009: 模型版本声明（ISO 42001 可复现性要求）
-    if (!md.model_version && !/\bmodel\s*(version|id)\s*[:=]/i.test(body)) {
+    if (!md.model_version && !/\bmodel\s*(version|id)\s*[:=]/i.test(body) && !/模型版本\s*[:=]/.test(body)) {
       govFindings.push({ level: 'warn', rule: 'COMP-009', message: '缺少模型版本声明（ISO 42001 要求记录 AI 系统使用的模型版本）', file: 'SKILL.md' });
     }
     // OPS-001: 版本号声明（semver）

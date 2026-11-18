@@ -189,7 +189,14 @@ export async function updateDraft(id: string, payload: {
   dataset?: string | null
   mcp_bindings?: DraftMcpBinding[]
 }): Promise<GateDraftView> {
-  return gateJson<GateDraftView>(`/drafts/${encodeURIComponent(id)}`, 'PUT', payload)
+  try {
+    return await gateJson<GateDraftView>(`/drafts/${encodeURIComponent(id)}`, 'PUT', payload)
+  } catch (e) {
+    // 草稿已被服务端清理时 404 envelope 的 msg 为"草稿不存在：..."（无 HTTP 状态码字样）→ 归一化标记，供上层回落新建
+    const msg = e instanceof Error ? e.message : String(e)
+    if (/404|不存在/.test(msg)) throw new Error(`404 ${msg}`)
+    throw e
+  }
 }
 
 export async function getDraftZip(id: string): Promise<Blob> {
@@ -486,6 +493,117 @@ export async function getStatsTop(): Promise<StatsTopView> {
 
 export async function getStatsLifecycle(): Promise<StatsLifecycleView> {
   return gateGet<StatsLifecycleView>('/stats/lifecycle')
+}
+
+// ── 统计看板扩展（P1 质量/效率/治理 + P2 采纳/业务价值）────────────
+
+export interface StatsGateRuns {
+  windowDays: number
+  gate: { total: number; passed: number; passRate: number | null }
+  stageFailures: Record<string, number>
+  topViolationRules: Record<string, number>
+  eval: { total: number; avgAccuracy: number | null }
+}
+
+export interface StatsRatings {
+  avgScore: number | null
+  ratedCount30d: number
+  trend30d: Array<{ day: string; c: number; avg_score: number | null }>
+  distribution: Record<string, number>
+}
+
+export interface StatsQualityView {
+  asOf: string
+  gate: StatsGateRuns
+  ratings: StatsRatings | null
+}
+
+export interface StatsEfficiencyView {
+  asOf: string
+  review: { completed: number; rejected: number; p50h: number | null; p90h: number | null } | null
+  promotion: { completed: number; rejected: number; p50h: number | null; p90h: number | null } | null
+  publishLeadTime: { p50h: number | null; p90h: number | null; samples: number } | null
+  contributors: { active30d: number; new30d: number } | null
+  publishFrequency: { last30d: number; last90d: number }
+}
+
+export interface StatsGovernanceView {
+  asOf: string
+  security: { scans: number; unsafe: number; findings: number; severity: Record<string, number> } | null
+  pendingBacklog: { lt1d: number; d1to3: number; d3to7: number; gt7d: number } | null
+  pendingReviews: number
+  pendingPromotions: number
+  yankedCount: number
+  hiddenSkills: number
+}
+
+export interface StatsAdoptionView {
+  asOf: string
+  enabled: boolean
+  users?: {
+    dau: number; wau: number; mau: number
+    dauSeries: Array<{ day: string; users: number }>
+  }
+  channels?: Array<{ source: string; events: number; users: number }>
+  autoPublish?: { auto: number; total: number }
+  adoptionCurve?: Array<{ offset_day: number; downloads: number; skills: number }>
+  reuse?: { skillsWithUsers: number; multiUserSkills: number; reuseRate: number | null }
+  topSkillsByUsers?: Array<{ id: number; ns: string; slug: string; name: string; users: number }>
+}
+
+export interface StatsValueView {
+  asOf: string
+  activeSkills: { published: number; active30d: number | null; ratio: number | null }
+  contributors: { active30d: number; new30d: number } | null
+  suites: { total: number } | null
+  manhours: {
+    enabled: boolean
+    perActiveSkillHours: number
+    hoursPerMonth: number | null
+    note: string
+  }
+}
+
+export async function getStatsQuality(): Promise<StatsQualityView> {
+  return gateGet<StatsQualityView>('/stats/quality')
+}
+
+export async function getStatsEfficiency(): Promise<StatsEfficiencyView> {
+  return gateGet<StatsEfficiencyView>('/stats/efficiency')
+}
+
+export async function getStatsGovernance(): Promise<StatsGovernanceView> {
+  return gateGet<StatsGovernanceView>('/stats/governance')
+}
+
+export async function getStatsAdoption(): Promise<StatsAdoptionView> {
+  return gateGet<StatsAdoptionView>('/stats/adoption')
+}
+
+export async function getStatsValue(): Promise<StatsValueView> {
+  return gateGet<StatsValueView>('/stats/value')
+}
+
+// ── 触发调用（实时聚合：对话会话 / MCP 调用 / CLI 上报）──────────────
+
+export type StatsTriggerKind = 'skill' | 'mcp_tool' | 'agent_chat'
+
+export interface StatsTriggerKindStats {
+  total: number
+  failRate: number | null
+  uniqueUsers: number
+  daily: Record<string, number>
+  top: Array<{ name: string; count: number; users: number }>
+}
+
+export interface StatsTriggersView {
+  asOf: string
+  windowDays: number
+  usage: Partial<Record<StatsTriggerKind, StatsTriggerKindStats>>
+}
+
+export async function getStatsTriggers(): Promise<StatsTriggersView> {
+  return gateGet<StatsTriggersView>('/stats/triggers')
 }
 
 // ── 统一对话 SSE ─────────────────────────────────────────────────

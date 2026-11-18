@@ -16,6 +16,8 @@ COPY package.json package-lock.json* ./
 RUN npm install --omit=dev --no-audit --no-fund
 
 COPY src ./src
+# 企业级规范资产：编写规范 + 安全基线 + 元模板库（对话创建时注入 creator）
+COPY spec ./spec
 
 # 证据 / 草稿 / runs 落盘目录（compose 挂 named volume）
 ENV DATA_DIR=/data \

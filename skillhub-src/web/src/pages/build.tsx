@@ -26,7 +26,7 @@ import {
   startGateRun, streamAgentChat, updateDraft,
   addMcpServer, listMcpServers, probeAllMcpTools, removeMcpServer, updateMcpServer,
   type AgentCard, type AgentPhaseEvent, type DraftMcpBinding, type EvolveCompare, type EvolveJob,
-  type GateDraftFile, type GateRun, type LibrarySkill, type McpCatalogItem, type McpServerConfig, type McpServerStatus, type McpToolInfo,
+  type GateDraftFile, type GateDraftView, type GateRun, type LibrarySkill, type McpCatalogItem, type McpServerConfig, type McpServerStatus, type McpToolInfo,
 } from '@/api/gateClient'
 
 // 进化卡片 payload → EvolveJob（对话卡片与 REST 轮询共用）
@@ -45,6 +45,16 @@ function evolveJobFromCard(p: Record<string, unknown>): EvolveJob {
         candidate_md: p.candidate_md ? String(p.candidate_md) : undefined,
       },
     ],
+  }
+}
+
+// stale draftId 兜底：IndexedDB 恢复的草稿可能已被服务端清理（404）→ 回落新建草稿，避免保存永久失败
+async function updateDraftOrRecreate(id: string, payload: Parameters<typeof saveDraft>[0]): Promise<GateDraftView> {
+  try {
+    return await updateDraft(id, payload)
+  } catch (e) {
+    if (!/404/.test(e instanceof Error ? e.message : String(e))) throw e
+    return await saveDraft(payload)
   }
 }
 
@@ -192,6 +202,7 @@ export function BuildPage() {
 
   // 运行记录
   const [gateRun, setGateRun] = useState<GateRun | null>(null)
+  const [fixPending, setFixPending] = useState(false)
   const [gateLevel, setGateLevel] = useState<'check' | 'release'>('check')
   const [evalRun, setEvalRun] = useState<GateRun | null>(null)
   const [evolveJob, setEvolveJob] = useState<EvolveJob | null>(null)
@@ -276,7 +287,7 @@ export function BuildPage() {
         dataset: datasetYaml.trim() || null,
         mcp_bindings: draftMcpBindings,
       }
-      const saved = draftId ? await updateDraft(draftId, payload) : await saveDraft(payload)
+      const saved = draftId ? await updateDraftOrRecreate(draftId, payload) : await saveDraft(payload)
       setDraftId(saved.id)
       toast.success(`草稿已保存（${saved.id}）`)
       return saved.id
@@ -332,14 +343,22 @@ export function BuildPage() {
           setDraftMd(markdown)
           if (files.length) setDraftFiles(files)
           setSelectedFilePath(null)
-          // 自动保存（dataset 沿用当前内容）
+          if (p.draft_id) {
+            // 服务端已在修复/迭代轮落盘新版：跳过重复保存，仅对齐状态
+            const sid = String(p.draft_id)
+            setDraftId(sid)
+            return { note: `已更新草稿（${sid}）并自动检查` }
+          }
+          // 自动保存（dataset 沿用当前内容）；保存即检查（服务端异步），延迟刷新 run 历史
           void (async () => {
             try {
               const payload = { name: draftNameRef.current.trim() || name, markdown, files, dataset: datasetYamlRef.current.trim() || null }
-              const saved = draftIdRef.current ? await updateDraft(draftIdRef.current, payload) : await saveDraft(payload)
+              const saved = draftIdRef.current ? await updateDraftOrRecreate(draftIdRef.current, payload) : await saveDraft(payload)
               setDraftId(saved.id)
               setDraftName(draftNameRef.current.trim() || name)
               toast.success(`草稿已自动保存（${saved.id}）`)
+              setTimeout(() => void loadGateHistory(saved.id), 2500)
+              setTimeout(() => void loadGateHistory(saved.id), 6000)
             } catch (e) {
               toast.error(`草稿自动保存失败：${e instanceof Error ? e.message : e}`)
             }
@@ -349,6 +368,7 @@ export function BuildPage() {
         case 'gate_stages': {
           const run = p as unknown as GateRun
           setGateRun(run)
+          setFixPending(run.status !== 'passed')
           return { note: run.status === 'passed' ? '检查扫描通过' : '检查扫描未通过' }
         }
         case 'eval_report': {
@@ -497,7 +517,11 @@ export function BuildPage() {
         const run = await getRun('gate', run_id)
         if (!mountedRef.current) return
         setGateRun(run)
-        if (run.status !== 'running') break
+        // 手动检查同样驱动修复按钮状态（gate_stages 只覆盖对话内检查路径）
+        if (run.status !== 'running') {
+          setFixPending(run.status !== 'passed')
+          break
+        }
         if (i === 149) toast.warning('检查扫描超时（5 分钟），请稍后在历史记录中查看结果')
       }
     } catch (e) {
@@ -568,10 +592,11 @@ export function BuildPage() {
     }
   }, [evolveJob, refreshDraft])
 
-  const loadGateHistory = useCallback(() => {
-    if (!draftIdRef.current) return
+  const loadGateHistory = useCallback((id?: string) => {
+    const target = id || draftIdRef.current
+    if (!target) return
     void listRuns('gate')
-      .then((runs) => setGateHistory(runs.filter((r) => r.draft_id === draftIdRef.current && r.status !== 'running').slice(0, 10)))
+      .then((runs) => setGateHistory(runs.filter((r) => r.draft_id === target && r.status !== 'running').slice(0, 10)))
       .catch(() => {})
   }, [])
 
@@ -755,6 +780,19 @@ export function BuildPage() {
           </div>
           <div className="border-t p-3">
             <div className="mb-2 flex flex-wrap gap-1.5">
+              {fixPending && draftId && (
+                <button
+                  type="button"
+                  disabled={!canChat || sending}
+                  onClick={() => {
+                    setFixPending(false)
+                    void send('请按检查结果修复当前技能草稿中最近一次检查的未通过项，保持 name 与既有 frontmatter 稳定', 'create')
+                  }}
+                  className="rounded-full border border-amber-500/60 bg-amber-500/10 px-2.5 py-1 text-xs text-amber-700 transition-colors hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
+                >
+                  按检查结果修复
+                </button>
+              )}
               {INTENT_CHIPS.map((chip) => (
                 <button
                   key={chip.mode}
@@ -810,7 +848,7 @@ export function BuildPage() {
           <Tabs defaultValue="draft" className="flex min-h-0 flex-1 flex-col gap-3">
             <TabsList className="w-fit">
               <TabsTrigger value="draft">草稿</TabsTrigger>
-              <TabsTrigger value="gate" onMouseDown={loadGateHistory}>检查</TabsTrigger>
+              <TabsTrigger value="gate" onMouseDown={() => loadGateHistory()}>检查</TabsTrigger>
               <TabsTrigger value="eval">测评</TabsTrigger>
               <TabsTrigger value="evolve">进化</TabsTrigger>
               <TabsTrigger value="mcp" onMouseDown={() => { if (mcpServers === null) void loadMcpServers() }}>MCP工具</TabsTrigger>

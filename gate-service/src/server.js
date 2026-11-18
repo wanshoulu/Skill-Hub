@@ -8,12 +8,15 @@ import { checkAuth } from './auth.js';
 import {
   statsEnabled, checkStatsToken, startScheduler,
   viewOverview, viewTrend, viewSkills, viewTop, viewLifecycle, viewSkillTrend,
+  viewQuality, viewEfficiency, viewGovernance, viewAdoption, viewValue, viewTriggers,
 } from './stats.js';
+import { recordUsage } from './usage.js';
 import {
   ensureDirs, seedSkills, saveJson, readJson, draftDir, dirOf, readRun, listRuns, readEvidence,
 } from './store.js';
 import { packDraftDir } from './pack.js';
-import { beginGate, executeGate, beginEval, executeEval, startEvolve, adoptJob, agentChat } from './orchestrator.js';
+import { specReady, specBundle } from './spec.js';
+import { beginGate, executeGate, beginEval, executeEval, startEvolve, adoptJob, agentChat, autoCheckDraft } from './orchestrator.js';
 import { llm } from './llm.js';
 import {
   listMcpServers, addMcpServer, updateMcpServer, removeMcpServer,
@@ -176,7 +179,7 @@ async function route(req, res) {
   // healthz 免鉴权（探测用）
   if (method === 'GET' && p === '/v1/healthz') {
     const l = llm.configured ? await llm.probe() : { ok: false, error: 'LLM 未配置', model: llm.model };
-    return ok(res, { status: 'ok', version: VERSION, llm: l, uptime: process.uptime() });
+    return ok(res, { status: 'ok', version: VERSION, llm: l, spec: { ready: specReady(), templates: specBundle().templates.length }, uptime: process.uptime() });
   }
 
   // ── 统计看板（独立鉴权：X-Stats-Token，不走 GATE_TOKEN）──
@@ -214,6 +217,30 @@ async function route(req, res) {
         const v = viewLifecycle();
         return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
       }
+      if (method === 'GET' && sub === 'quality') {
+        const v = viewQuality();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'efficiency') {
+        const v = viewEfficiency();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'governance') {
+        const v = viewGovernance();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'adoption') {
+        const v = viewAdoption();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'value') {
+        const v = viewValue();
+        return v ? ok(res, v) : fail(res, 503, '暂无统计数据（快照未生成，请稍候）');
+      }
+      if (method === 'GET' && sub === 'triggers') {
+        // 触发调用是实时聚合（数据在本地 JSONL，不在 PG），无需等快照生成
+        return ok(res, viewTriggers());
+      }
     } catch (e) {
       return fail(res, 500, `stats 查询失败：${e.message}`);
     }
@@ -228,6 +255,8 @@ async function route(req, res) {
     let body;
     try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
     catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    // 埋点：对话会话数（触发调用第①层）；user 为可选透传（鉴权层无用户身份）
+    recordUsage({ kind: 'agent_chat', name: 'agent_chat', user: body.user || null, source: 'platform' });
     const sse = sseWriter(res);
     try {
       await agentChat(
@@ -239,6 +268,23 @@ async function route(req, res) {
     }
     sse.send('done', {});
     return sse.close();
+  }
+
+  // ── CLI 遥测批量上报（触发调用第③层：本地 Agent 的技能触发，平台感知不到，opt-in 上报）──
+  if (p === '/v1/usage' && method === 'POST') {
+    let body;
+    try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch { return fail(res, 400, '请求体不是有效的 JSON'); }
+    const events = Array.isArray(body.events) ? body.events : [];
+    if (!events.length) return fail(res, 400, '需要 events 数组');
+    if (events.length > 1000) return fail(res, 413, '单次上报 events 上限 1000 条');
+    let accepted = 0, rejected = 0;
+    for (const e of events) {
+      // kind 白名单校验；source 强制标记为 cli（防伪造平台内部来源）
+      if (recordUsage({ ...e, source: 'cli' })) accepted += 1;
+      else rejected += 1;
+    }
+    return ok(res, { accepted, rejected });
   }
 
   // ── MCP 预置市场目录（带安装态与健康度）─────────────────────────
@@ -330,9 +376,14 @@ async function route(req, res) {
     try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
     catch { return fail(res, 400, '请求体不是有效的 JSON'); }
     if (!body.server_id || !body.tool) return fail(res, 400, '需要 server_id 与 tool');
+    // 埋点：MCP 工具调用（触发调用第②层），ok 标记成败
+    const name = `${body.server_id}/${body.tool}`;
     try {
-      return ok(res, await callMcpTool(body.server_id, String(body.tool), body.arguments || {}, { timeoutMs: Number(body.timeout_ms) || 45_000 }));
+      const r = await callMcpTool(body.server_id, String(body.tool), body.arguments || {}, { timeoutMs: Number(body.timeout_ms) || 45_000 });
+      recordUsage({ kind: 'mcp_tool', name, user: body.user || null, source: 'platform', ok: true });
+      return ok(res, r);
     } catch (e) {
+      recordUsage({ kind: 'mcp_tool', name, user: body.user || null, source: 'platform', ok: false });
       return fail(res, e.status || 500, String(e.message || e));
     }
   }
@@ -396,6 +447,7 @@ async function route(req, res) {
     if (!body.name || !body.markdown) return fail(res, 400, '需要 name 与 markdown');
     const id = newDraftId();
     const meta = await writeDraft(id, body);
+    autoCheckDraft(id); // 保存即检查（异步，结果写 meta.last_check 与 gate run 列表）
     return ok(res, draftView(meta));
   }
   if (p === '/v1/drafts' && method === 'GET') {
@@ -454,6 +506,7 @@ async function route(req, res) {
         newMeta.updated_at = Date.now();
         saveJson(`drafts/${id}/meta.json`, newMeta);
         syncSkillMd(dir, newMeta.mcp_bindings || []);
+        autoCheckDraft(id); // 保存即检查（异步）
       }
       return ok(res, draftView(readJson(`drafts/${id}/meta.json`)));
     }

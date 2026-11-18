@@ -10,10 +10,12 @@ import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { DATA_DIR, saveJson, readJson } from './store.js';
+import { DATA_DIR, saveJson, readJson, listRuns } from './store.js';
+import { aggUsage, cleanOldUsage } from './usage.js';
 
 const SNAP_DIR = 'stats';
 const RETENTION_DAYS = Number(process.env.STATS_RETENTION_DAYS || 90);
+const EVENT_RETENTION_DAYS = Number(process.env.STATS_EVENT_RETENTION_DAYS || 180);
 const INTERVAL_MS = Number(process.env.STATS_INTERVAL_MS || 60 * 60 * 1000); // 每小时
 const TIME_ZONE = process.env.STATS_TIME_ZONE || 'Asia/Shanghai';
 
@@ -96,7 +98,7 @@ function groupCount(rows, key) {
   return m;
 }
 
-async function collect() {
+async function collectBase() {
   const [
     skillStatus, skillVisibility, hiddenCount, versionStatus, skillTotals,
     reviewPending, promotionPending, nsCount, skillsDetail, publishedByDay,
@@ -177,6 +179,139 @@ async function collect() {
     pendingReviews: reviewList,
     pendingPromotions: promotionList,
     yankedVersions: yankedList,
+  };
+}
+
+// 快照组装入口：主段（原 13 项）+ 扩展段（P1/P2）。
+// 扩展段整体 try/catch：任何新指标查询失败仅记录 extError，不影响既有看板数据。
+async function collect() {
+  const base = await collectBase();
+  let extended = null;
+  let events = null;
+  let extError = null;
+  try { extended = await collectExtended(); } catch (e) { extError = e.message; }
+  try { events = await collectEvents(); } catch (e) { extError = extError || `events: ${e.message}`; }
+  if (events) {
+    try {
+      await q(`DELETE FROM business_event_log WHERE occurred_at < now() - ($1 || ' days')::interval`, [String(EVENT_RETENTION_DAYS)]);
+    } catch { /* 清理失败不影响快照 */ }
+  }
+  try { cleanOldUsage(); } catch { /* usage 月度文件清理失败不影响快照 */ }
+  return {
+    ...base,
+    quality: extended?.quality ?? null,
+    efficiency: extended?.efficiency ?? null,
+    governance: extended?.governance ?? null,
+    value: extended?.value ?? null,
+    adoption: events,
+    extError,
+  };
+}
+
+// ── 扩展采集（P1 质量/效率/治理/价值 + P2 业务事件）：独立失败不影响主快照 ──
+
+// P1：评分/审核效率/发布前置/贡献者/套件/安全审计/审核积压
+async function collectExtended() {
+  const [
+    ratingTrend, ratingDist, reviewEff, promotionEff, publishLead,
+    contributors, newContributors, suites, secAudit, secSeverity, backlog,
+  ] = await Promise.all([
+    q(`SELECT to_char(created_at AT TIME ZONE $1,'YYYY-MM-DD') AS day, count(*)::int AS c,
+              round(avg(score)::numeric,2)::float8 AS avg_score
+       FROM skill_rating WHERE created_at >= now() - interval '30 days' GROUP BY 1 ORDER BY 1`, [TIME_ZONE]),
+    q(`SELECT score, count(*)::int AS c FROM skill_rating GROUP BY score`),
+    q(`SELECT count(*)::int AS completed,
+              count(*) FILTER (WHERE status='REJECTED')::int AS rejected,
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (reviewed_at - submitted_at))/3600.0)::float8 AS p50h,
+              percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (reviewed_at - submitted_at))/3600.0)::float8 AS p90h
+       FROM review_task WHERE status <> 'PENDING' AND reviewed_at IS NOT NULL AND reviewed_at >= now() - interval '30 days'`),
+    q(`SELECT count(*)::int AS completed,
+              count(*) FILTER (WHERE status='REJECTED')::int AS rejected,
+              percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (reviewed_at - submitted_at))/3600.0)::float8 AS p50h,
+              percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (reviewed_at - submitted_at))/3600.0)::float8 AS p90h
+       FROM promotion_request WHERE status <> 'PENDING' AND reviewed_at IS NOT NULL AND reviewed_at >= now() - interval '30 days'`),
+    q(`SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (published_at - created_at))/3600.0)::float8 AS p50h,
+              percentile_cont(0.9) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (published_at - created_at))/3600.0)::float8 AS p90h,
+              count(*)::int AS samples
+       FROM skill_version WHERE status='PUBLISHED' AND published_at IS NOT NULL AND published_at >= now() - interval '30 days'`),
+    q(`SELECT count(distinct created_by)::int AS c FROM skill_version
+       WHERE created_at >= now() - interval '30 days' AND created_by IS NOT NULL`),
+    q(`SELECT count(*)::int AS c FROM (
+         SELECT created_by FROM skill_version WHERE created_by IS NOT NULL
+         GROUP BY created_by HAVING min(created_at) >= now() - interval '30 days') t`),
+    q(`SELECT count(*)::int AS c FROM skill_suite`),
+    q(`SELECT count(*)::int AS scans,
+              count(*) FILTER (WHERE NOT is_safe)::int AS unsafe,
+              coalesce(sum(findings_count),0)::int AS findings
+       FROM security_audit WHERE deleted_at IS NULL AND created_at >= now() - interval '30 days'`),
+    q(`SELECT coalesce(max_severity,'none') AS severity, count(*)::int AS c
+       FROM security_audit WHERE deleted_at IS NULL AND created_at >= now() - interval '30 days' GROUP BY 1`),
+    q(`SELECT count(*) FILTER (WHERE now() - submitted_at < interval '1 day')::int AS lt1d,
+              count(*) FILTER (WHERE now() - submitted_at >= interval '1 day' AND now() - submitted_at < interval '3 days')::int AS d1to3,
+              count(*) FILTER (WHERE now() - submitted_at >= interval '3 days' AND now() - submitted_at < interval '7 days')::int AS d3to7,
+              count(*) FILTER (WHERE now() - submitted_at >= interval '7 days')::int AS gt7d
+       FROM review_task WHERE status='PENDING'`),
+  ]);
+  const scoreWeighted = ratingDist.reduce((acc, r) => acc + Number(r.score) * r.c, 0);
+  const scoreTotal = ratingDist.reduce((acc, r) => acc + r.c, 0);
+  return {
+    quality: {
+      ratings: {
+        avgScore: scoreTotal ? scoreWeighted / scoreTotal : null,
+        ratedCount30d: ratingTrend.reduce((a, r) => a + r.c, 0),
+        trend30d: ratingTrend,
+        distribution: Object.fromEntries(ratingDist.map((r) => [String(r.score), r.c])),
+      },
+    },
+    efficiency: {
+      review: reviewEff[0],
+      promotion: promotionEff[0],
+      publishLeadTime: publishLead[0],
+      contributors: { active30d: contributors[0].c, new30d: newContributors[0].c },
+    },
+    governance: {
+      security: { ...secAudit[0], severity: Object.fromEntries(secSeverity.map((r) => [r.severity, r.c])) },
+      pendingBacklog: backlog[0],
+    },
+    value: { suites: { total: suites[0].c } },
+  };
+}
+
+// P2：business_event_log 明细表采集（表未建/功能未开启时返回 null）
+async function collectEvents() {
+  const probe = await q(`SELECT to_regclass('public.business_event_log') IS NOT NULL AS ok`);
+  if (!probe[0]?.ok) return null;
+  const [dau, users, skillUsers, channels, autoPub, adoption] = await Promise.all([
+    q(`SELECT to_char(occurred_at AT TIME ZONE $1,'YYYY-MM-DD') AS day, count(distinct user_id)::int AS users
+       FROM business_event_log WHERE user_id IS NOT NULL AND occurred_at >= now() - interval '30 days' GROUP BY 1 ORDER BY 1`, [TIME_ZONE]),
+    q(`SELECT count(distinct user_id) FILTER (WHERE occurred_at >= now() - interval '1 day')::int AS dau,
+              count(distinct user_id) FILTER (WHERE occurred_at >= now() - interval '7 days')::int AS wau,
+              count(distinct user_id) FILTER (WHERE occurred_at >= now() - interval '30 days')::int AS mau
+       FROM business_event_log WHERE user_id IS NOT NULL`),
+    q(`SELECT skill_id, count(distinct user_id)::int AS users
+       FROM business_event_log WHERE user_id IS NOT NULL AND event_name='skill.download.prepared'
+         AND occurred_at >= now() - interval '30 days' GROUP BY 1`),
+    q(`SELECT source, count(*)::int AS events, count(distinct user_id)::int AS users
+       FROM business_event_log WHERE occurred_at >= now() - interval '30 days' GROUP BY 1`),
+    q(`SELECT count(*) FILTER (WHERE source='auto_publish')::int AS auto, count(*)::int AS total
+       FROM business_event_log WHERE event_name='skill.publication.effective' AND occurred_at >= now() - interval '30 days'`),
+    q(`SELECT LEAST(EXTRACT(DAY FROM (e.occurred_at - v.published_at))::int, 30) AS offset_day,
+              count(*)::int AS downloads, count(distinct e.skill_id)::int AS skills
+       FROM business_event_log e
+       JOIN skill_version v ON v.id = e.version_id
+       WHERE e.event_name='skill.download.prepared' AND e.user_id IS NOT NULL
+         AND v.status='PUBLISHED' AND v.published_at IS NOT NULL
+         AND v.published_at >= now() - interval '90 days'
+         AND e.occurred_at >= v.published_at
+         AND e.occurred_at <= v.published_at + interval '30 days'
+       GROUP BY 1 ORDER BY 1`),
+  ]);
+  return {
+    users: { ...users[0], dauSeries: dau },
+    skillUsers,
+    channels,
+    autoPublish: autoPub[0],
+    adoptionCurve: adoption,
   };
 }
 
@@ -406,6 +541,152 @@ export function viewSkillTrend(skillId, days) {
   return { asOf: snap.ts, skill: s, series: skillTrend(snap, skillId, days) };
 }
 
+// ── P1/P2 扩展视图：质量 / 效率 / 治理 / 采纳 / 业务价值 ─────────
+
+// 门禁与评测运行聚合（gate-service 本地 runs JSON，近 N 天）
+function gateRunsAgg(days = 30) {
+  const since = Date.now() - days * 86400000;
+  const pick = (kind) => {
+    try {
+      return listRuns(kind).filter((r) => (r.created_at || 0) >= since && r.status !== 'running');
+    } catch { return []; }
+  };
+  const gate = pick('gate');
+  const evals = pick('eval');
+  const passed = gate.filter((r) => r.status === 'passed').length;
+  const stageFail = {};
+  const ruleCount = {};
+  const evalAcc = [];
+  for (const r of gate) {
+    for (const s of r.stages || []) {
+      if (s.status === 'fail') stageFail[s.stage_id] = (stageFail[s.stage_id] || 0) + 1;
+      for (const f of s.findings || []) {
+        const key = f.rule || f.title || 'unknown';
+        ruleCount[key] = (ruleCount[key] || 0) + 1;
+      }
+    }
+  }
+  for (const r of evals) {
+    const acc = (r.stages || []).map((s) => s.metrics?.accuracy).find((v) => typeof v === 'number');
+    if (acc !== undefined) evalAcc.push(acc);
+  }
+  const sorted = (obj) => Object.fromEntries(Object.entries(obj).sort((a, b) => b[1] - a[1]));
+  return {
+    windowDays: days,
+    gate: { total: gate.length, passed, passRate: gate.length ? passed / gate.length : null },
+    stageFailures: sorted(stageFail),
+    topViolationRules: Object.fromEntries(Object.entries(sorted(ruleCount)).slice(0, 10)),
+    eval: { total: evals.length, avgAccuracy: evalAcc.length ? evalAcc.reduce((a, b) => a + b, 0) / evalAcc.length : null },
+  };
+}
+
+// 质量：门禁通过率 + 七项失败分布 + 违规规则 Top10 + 评测准确率 + 评分
+export function viewQuality() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  return { asOf: snap.ts, gate: gateRunsAgg(30), ratings: snap.quality?.ratings ?? null };
+}
+
+// 效率：审核/晋级时长 p50/p90、拒绝率、发布前置时间、发布频率、贡献者
+export function viewEfficiency() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  const day = dayOf(snap.ts);
+  const sumRange = (n) => {
+    let s = 0;
+    const c = new Date(snap.ts); c.setDate(c.getDate() - (n - 1));
+    for (let i = 0; i < n; i++) { s += snap.publishedByDay?.[dayOf(c)] || 0; c.setDate(c.getDate() + 1); }
+    return s;
+  };
+  return {
+    asOf: snap.ts,
+    review: snap.efficiency?.review ?? null,
+    promotion: snap.efficiency?.promotion ?? null,
+    publishLeadTime: snap.efficiency?.publishLeadTime ?? null,
+    contributors: snap.efficiency?.contributors ?? null,
+    publishFrequency: { last30d: sumRange(30), last90d: sumRange(90) },
+  };
+}
+
+// 治理：安全审计 + 审核积压分桶 + 下架/隐藏
+export function viewGovernance() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  return {
+    asOf: snap.ts,
+    security: snap.governance?.security ?? null,
+    pendingBacklog: snap.governance?.pendingBacklog ?? null,
+    pendingReviews: snap.overview.reviews.pending,
+    pendingPromotions: snap.overview.promotions.pending,
+    yankedCount: snap.yankedVersions.length,
+    hiddenSkills: snap.overview.skills.hidden,
+  };
+}
+
+// 采纳：WAU/MAU、每技能去重用户、渠道分布、采纳曲线、复用率（需事件表开启）
+export function viewAdoption() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  if (!snap.adoption) return { asOf: snap.ts, enabled: false };
+  const su = new Map(snap.adoption.skillUsers.map((r) => [Number(r.skill_id), r.users]));
+  const multi = [...su.values()].filter((u) => u >= 2).length;
+  const top = snap.skills
+    .map((s) => ({ id: s.id, ns: s.ns, slug: s.slug, name: s.name, users: su.get(s.id) || 0 }))
+    .filter((x) => x.users > 0)
+    .sort((a, b) => b.users - a.users)
+    .slice(0, 50);
+  return {
+    asOf: snap.ts,
+    enabled: true,
+    users: snap.adoption.users,
+    channels: snap.adoption.channels,
+    autoPublish: snap.adoption.autoPublish,
+    adoptionCurve: snap.adoption.adoptionCurve,
+    reuse: { skillsWithUsers: su.size, multiUserSkills: multi, reuseRate: su.size ? multi / su.size : null },
+    topSkillsByUsers: top,
+  };
+}
+
+// 业务价值：活跃技能占比（货架周转）、贡献者、套件、节省工时估算（配置化系数）
+export function viewValue() {
+  const snap = latestSnap();
+  if (!snap) return null;
+  const daily = dailyEndSnaps();
+  const loadEnd = (offsetDays, ref) => {
+    const c = new Date(ref); c.setDate(c.getDate() - offsetDays);
+    const day = dayOf(c);
+    let hit = null;
+    for (const d of daily) if (d.day < day) hit = d;
+    return hit ? loadSnap(hit.rel) : null;
+  };
+  const d30 = loadEnd(30, snap.ts);
+  const published = snap.skills.filter((s) => s.publishedCount > 0);
+  let active30d = null;
+  if (d30) {
+    active30d = published.filter((s) => {
+      const old = d30.skills.find((x) => x.id === s.id);
+      return old !== undefined && Math.max(0, s.downloadCount - old.downloadCount) > 0;
+    }).length;
+  }
+  const perActiveSkill = Number(process.env.STATS_VALUE_MANHOURS_PER_ACTIVE_SKILL || 0);
+  return {
+    asOf: snap.ts,
+    activeSkills: {
+      published: published.length,
+      active30d,
+      ratio: d30 && published.length ? active30d / published.length : null,
+    },
+    contributors: snap.efficiency?.contributors ?? null,
+    suites: snap.value?.suites ?? null,
+    manhours: {
+      enabled: perActiveSkill > 0,
+      perActiveSkillHours: perActiveSkill,
+      hoursPerMonth: active30d && perActiveSkill > 0 ? active30d * perActiveSkill : null,
+      note: '估算值：每活跃技能每月节省工时系数来自 STATS_VALUE_MANHOURS_PER_ACTIVE_SKILL 配置',
+    },
+  };
+}
+
 // X-Stats-Token 校验（constant-time）
 export function checkStatsToken(headerVal) {
   const expect = process.env.STATS_TOKEN || '';
@@ -415,4 +696,10 @@ export function checkStatsToken(headerVal) {
   const b = Buffer.from(expect);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+// ── 触发调用视图：实时聚合（不走小时快照——数据在本地 JSONL，不在 PG）──
+// 三层来源：agent_chat（对话会话）/ mcp_tool（MCP 调用）/ skill（CLI 上报），30 天窗口
+export function viewTriggers() {
+  return { asOf: new Date().toISOString(), windowDays: 30, usage: aggUsage(30) };
 }

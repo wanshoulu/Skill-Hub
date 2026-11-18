@@ -115,6 +115,8 @@ const DashboardPage = createLazyRouteComponent(() => import('@/pages/dashboard')
 const MySkillsPage = createLazyRouteComponent(() => import('@/pages/dashboard/my-skills'), 'MySkillsPage', dashboardRouteOptions)
 const DashboardAnalyticsPage = createLazyRouteComponent(() => import('@/pages/dashboard/analytics'), 'DashboardAnalyticsPage', dashboardRouteOptions)
 const DashboardLifecyclePage = createLazyRouteComponent(() => import('@/pages/dashboard/lifecycle'), 'DashboardLifecyclePage', dashboardRouteOptions)
+const DashboardQualityPage = createLazyRouteComponent(() => import('@/pages/dashboard/quality'), 'DashboardQualityPage', dashboardRouteOptions)
+const DashboardValuePage = createLazyRouteComponent(() => import('@/pages/dashboard/value'), 'DashboardValuePage', dashboardRouteOptions)
 const PublishPage = createLazyRouteComponent(() => import('@/pages/dashboard/publish'), 'PublishPage', dashboardRouteOptions)
 const BuildPage = createLazyRouteComponent(() => import('@/pages/build'), 'BuildPage')
 const ApplicationsPage = createLazyRouteComponent(() => import('@/pages/applications'), 'ApplicationsPage')
@@ -441,6 +443,20 @@ const dashboardLifecycleRoute = createRoute({
   path: 'dashboard/lifecycle',
   beforeLoad: requireAuth,
   component: DashboardLifecyclePage,
+})
+
+const dashboardQualityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'dashboard/quality',
+  beforeLoad: requireAuth,
+  component: DashboardQualityPage,
+})
+
+const dashboardValueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'dashboard/value',
+  beforeLoad: requireAuth,
+  component: DashboardValuePage,
 })
 
 const dashboardPublishRoute = createRoute({
@@ -860,6 +876,8 @@ const routeTree = rootRoute.addChildren([
   dashboardSkillsRoute,
   dashboardAnalyticsRoute,
   dashboardLifecycleRoute,
+  dashboardQualityRoute,
+  dashboardValueRoute,
   dashboardPublishRoute,
   dashboardSuitesRoute,
   dashboardSuiteManagementRoute,

@@ -1,6 +1,7 @@
 // orchestrator.js — 统一对话入口（意图路由 + create 转发 build-agent / 流水线编排出 card）
 // 以及 gate / eval / evolve 的核心流程（server.js 的 REST 端点也复用）
-import { draftDir, saveRun, readRun, listRuns, saveEvidence, readJson } from './store.js';
+import { draftDir, saveRun, readRun, listRuns, saveEvidence, readJson, saveJson } from './store.js';
+import { createSpecBlock } from './spec.js';
 import { runBasic } from './stages/basic.js';
 import { runDataset, parseDataset } from './stages/runtime.js';
 import { runEvolve } from './evolve.js';
@@ -284,8 +285,20 @@ export function extractArtifacts(answer) {
 }
 
 // create：转发 skill-build-agent（事件原样透传），done 后提取产出 card
-async function forwardCreate(message, history, emit, mcpBindings = []) {
+// draftId 存在时注入精简规范 + 最近失败检查项（修复闭环）；否则注入完整规范+模板骨架（首次创建）
+async function forwardCreate(message, history, emit, mcpBindings = [], draftId = null) {
   emit('phase', { name: '技能创建', status: 'running', detail: '转发 skill-build-agent' });
+
+  // 平台规范注入：企业级编写规范 + 安全基线 + 元模板（生成前约束，事前规避而非仅事后拦截）
+  let specContext = '';
+  if (draftId) {
+    const failedRun = listRuns('gate')
+      .filter((r) => r.draft_id === draftId && r.status === 'failed')
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0] || null;
+    specContext = createSpecBlock({ hasDraft: true, failedRun });
+  } else {
+    specContext = createSpecBlock({ hasDraft: false });
+  }
 
   // 构建 MCP 工具上下文（探测失败不阻断创建流程）
   let mcpContext = '';
@@ -346,7 +359,7 @@ async function forwardCreate(message, history, emit, mcpBindings = []) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      message: message + mcpContext,
+      message: message + specContext + mcpContext,
       history,
     }),
     signal: ctrl.signal,
@@ -455,11 +468,31 @@ export async function agentChat({ message, history = [], draft_id = null, mode =
       }
     }
 
-    const answer = await forwardCreate(message, history, emit, mcpBindings);
+    const answer = await forwardCreate(message, history, emit, mcpBindings, draft_id);
     // 提取产出（若有）→ card 供前端预览保存
     const art = extractArtifacts(answer);
     if (art.markdown) {
-      emit('card', { type: 'draft_extracted', payload: { name: art.name, markdown: art.markdown, files: art.files } });
+      if (draft_id) {
+        // 草稿已存在（迭代/修复轮）：服务端直接落盘新版 → 立即自动检查 → 结果以 card 回流，
+        // 形成「创建 → 检查 → 按检查结果修复」闭环（前端凭 draft_id 跳过重复保存）
+        try {
+          const baseUpdatedAt = updateDraftArtifacts(draft_id, art);
+          emit('card', { type: 'draft_extracted', payload: { draft_id, name: art.name, markdown: art.markdown, files: art.files } });
+          emit('phase', { name: '保存后自动检查', status: 'running', detail: '七项静态检查' });
+          const run = await runGate({ source: { type: 'draft', id: draft_id }, level: 'check' });
+          markDraftCheck(draft_id, run, baseUpdatedAt);
+          emit('card', { type: 'gate_stages', payload: runToCard(run) });
+          emit('phase', {
+            name: '保存后自动检查', status: 'done',
+            detail: run.status === 'passed' ? '全部通过' : '存在未通过项，可点击「按检查结果修复」',
+          });
+        } catch (e) {
+          emit('phase', { name: '保存后自动检查', status: 'done', detail: `检查未完成：${e.message || e}` });
+        }
+      } else {
+        // 首次产出：前端保存草稿，保存接口异步触发自动检查（autoCheckDraft）
+        emit('card', { type: 'draft_extracted', payload: { name: art.name, markdown: art.markdown, files: art.files } });
+      }
     }
     return;
   }
@@ -534,6 +567,67 @@ function readDraftSkillMd(draftId) {
   } catch {
     return null;
   }
+}
+
+// 迭代/修复轮：把 agent 产出的新版 SKILL.md 与附件直接写入草稿（路径穿越防护同 server.js writeDraftTo）
+// 原子写（tmp+rename，防与用户保存交错出半截文件）；禁改 meta.json；文件数/单文件大小设上限（不完全信任 build-agent 输出）
+const MAX_AGENT_FILES = 50;
+const MAX_AGENT_FILE_BYTES = 2 * 1024 * 1024;
+
+function atomicWrite(file, content) {
+  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tmp, content, 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+// 返回写入后的 meta.updated_at，供 markDraftCheck 做过期结果防护
+function updateDraftArtifacts(id, art) {
+  const dir = draftDir(id);
+  if (!fs.existsSync(dir)) throw Object.assign(new Error(`草稿不存在：${id}`), { status: 404 });
+  atomicWrite(path.join(dir, 'SKILL.md'), art.markdown);
+  const files = Array.isArray(art.files) ? art.files.slice(0, MAX_AGENT_FILES) : [];
+  for (const f of files) {
+    const rel = String(f.path || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!rel || rel.includes('..') || rel === 'SKILL.md' || rel === 'meta.json') continue;
+    const abs = path.resolve(dir, rel);
+    if (!abs.startsWith(path.resolve(dir) + path.sep)) continue;
+    const content = String(f.content ?? '');
+    if (Buffer.byteLength(content) > MAX_AGENT_FILE_BYTES) continue;
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    atomicWrite(abs, content);
+  }
+  const meta = readJson(`drafts/${id}/meta.json`);
+  if (meta) {
+    if (art.name) meta.name = art.name;
+    meta.updated_at = Date.now();
+    saveJson(`drafts/${id}/meta.json`, meta);
+    return meta.updated_at;
+  }
+  return null;
+}
+
+// 检查结果回写 meta.last_check（保存即检查；前端草稿列表/看板可直接读取）
+// expectedUpdatedAt=检查开始时的草稿 updated_at：期间草稿又被保存过则丢弃本次过期结果，防旧内容的检查覆盖新草稿
+function markDraftCheck(id, run, expectedUpdatedAt = null) {
+  try {
+    const meta = readJson(`drafts/${id}/meta.json`);
+    if (meta) {
+      if (expectedUpdatedAt && meta.updated_at !== expectedUpdatedAt) return;
+      meta.last_check = { run_id: run.id, status: run.status, finished_at: Date.now() };
+      saveJson(`drafts/${id}/meta.json`, meta);
+    }
+  } catch { /* meta 更新失败不影响主流程 */ }
+}
+
+// REST 保存草稿后的异步自动检查（fire-and-forget：check 级纯静态秒级完成，失败静默不影响保存）
+export function autoCheckDraft(id) {
+  (async () => {
+    try {
+      const startedAt = readJson(`drafts/${id}/meta.json`)?.updated_at ?? null;
+      const run = await runGate({ source: { type: 'draft', id }, level: 'check' });
+      markDraftCheck(id, run, startedAt);
+    } catch { /* 静默 */ }
+  })();
 }
 
 // run → card payload（精简：stage 摘要 + runtime 带 cases）

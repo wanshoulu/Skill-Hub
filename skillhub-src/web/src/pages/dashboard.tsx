@@ -5,12 +5,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '@/features/auth/use-auth'
 import { APP_SHELL_PAGE_CLASS_NAME } from '@/app/page-shell-style'
 import { DashboardPageHeader } from '@/shared/components/dashboard-page-header'
-import { getStatsOverview, getStatsTrend, getStatsTop } from '@/api/gateClient'
-import { formatCompactCount } from '@/shared/lib/number-format'
+import {
+  getStatsAdoption, getStatsEfficiency, getStatsOverview, getStatsQuality,
+  getStatsTrend, getStatsTop, getStatsValue,
+} from '@/api/gateClient'
+import { formatCompactCount, formatHours, formatPercent } from '@/shared/lib/number-format'
 import {
   Star, Heart, Package, Boxes, Key, Shield, Flag, Globe,
   UserCog, Lock, Bell, Clock, ChevronDown, ChevronRight, Github,
-  LineChart, GitBranch, Download, ArrowUpRight, CircleDot,
+  LineChart, GitBranch, Download, ArrowUpRight, CircleDot, Gauge, Users,
 } from 'lucide-react'
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -56,6 +59,8 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
     items: [
       { key: 'analytics', icon: LineChart, label: 'sidebar.analytics', to: '/dashboard/analytics', analyticsId: 'stats.analytics.open' },
       { key: 'lifecycle', icon: GitBranch, label: 'sidebar.lifecycle', to: '/dashboard/lifecycle', analyticsId: 'stats.lifecycle.open' },
+      { key: 'quality', icon: Gauge, label: 'sidebar.quality', to: '/dashboard/quality', analyticsId: 'stats.quality.open' },
+      { key: 'value', icon: Users, label: 'sidebar.value', to: '/dashboard/value', analyticsId: 'stats.value.open' },
       { key: 'skills', icon: Package, label: 'sidebar.mySkills', to: '/dashboard/skills', analyticsId: 'navigation.owned.skills' },
       { key: 'suites', icon: Boxes, label: 'sidebar.mySuites', to: '/dashboard/suites', analyticsId: 'navigation.owned.suites' },
       { key: 'namespaces', icon: Globe, label: 'sidebar.namespaces', to: '/dashboard/namespaces', analyticsId: 'namespace.list.open' },
@@ -154,6 +159,26 @@ function DashboardStatsSection() {
   const overview = useQuery({ queryKey: ['gate-stats-overview'], queryFn: getStatsOverview, retry: 1 })
   const trend = useQuery({ queryKey: ['gate-stats-trend', 30], queryFn: () => getStatsTrend(30), retry: 1 })
   const top = useQuery({ queryKey: ['gate-stats-top'], queryFn: getStatsTop, retry: 1 })
+  // Extended KPIs (adoption/value/quality/efficiency) fetched in parallel; a failed
+  // endpoint only degrades its own card to "—" instead of failing the section.
+  const extended = useQuery({
+    queryKey: ['gate-stats-extended-kpi'],
+    queryFn: async () => {
+      const [adoption, value, quality, efficiency] = await Promise.allSettled([
+        getStatsAdoption(),
+        getStatsValue(),
+        getStatsQuality(),
+        getStatsEfficiency(),
+      ])
+      return {
+        adoption: adoption.status === 'fulfilled' ? adoption.value : null,
+        value: value.status === 'fulfilled' ? value.value : null,
+        quality: quality.status === 'fulfilled' ? quality.value : null,
+        efficiency: efficiency.status === 'fulfilled' ? efficiency.value : null,
+      }
+    },
+    retry: 1,
+  })
 
   if (overview.isError) {
     return (
@@ -198,13 +223,17 @@ function DashboardStatsSection() {
       </div>
 
       {/* KPI 行 */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard label={t('dashboard.stats.totalSkills')} value={formatCompactCount(kpi.skills.total)} hint={t('dashboard.stats.namespaces', { count: kpi.namespaces.total })} icon={Package} to="/dashboard/analytics" />
         <KpiCard label={t('dashboard.stats.totalDownloads')} value={formatCompactCount(kpi.downloads.total)} icon={Download} />
         <KpiCard label={t('dashboard.stats.todayDownloads')} value={kpi.downloads.today == null ? '—' : formatCompactCount(kpi.downloads.today)} icon={Download} />
         <KpiCard label={t('dashboard.stats.last7d')} value={kpi.downloads.last7d == null ? '—' : formatCompactCount(kpi.downloads.last7d)} hint={kpi.downloads.last7d == null ? t('dashboard.stats.historyShort') : undefined} icon={Download} />
         <KpiCard label={t('dashboard.stats.pendingReviews')} value={formatCompactCount(kpi.reviews.pending)} icon={Shield} to="/dashboard/reviews" />
         <KpiCard label={t('dashboard.stats.pendingPromotions')} value={formatCompactCount(kpi.promotions.pending)} icon={ArrowUpRight} to="/dashboard/promotions" />
+        <KpiCard label={t('dashboard.stats.activeUsers7d')} value={extended.data?.adoption?.users ? formatCompactCount(extended.data.adoption.users.wau) : '—'} icon={Users} to="/dashboard/value" />
+        <KpiCard label={t('dashboard.stats.activeSkillRatio')} value={extended.data?.value ? formatPercent(extended.data.value.activeSkills.ratio) : '—'} icon={Package} to="/dashboard/value" />
+        <KpiCard label={t('dashboard.stats.avgRating')} value={extended.data?.quality?.ratings?.avgScore == null ? '—' : extended.data.quality.ratings.avgScore.toFixed(1)} icon={Star} to="/dashboard/quality" />
+        <KpiCard label={t('dashboard.stats.reviewP50')} value={extended.data ? formatHours(extended.data.efficiency?.review?.p50h) : '—'} icon={Clock} to="/dashboard/quality" />
       </div>
 
       {/* 趋势图 */}

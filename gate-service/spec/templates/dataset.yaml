@@ -1,0 +1,27 @@
+<!--
+模板：测评用例集（随"带评测版"技能放入包内 evals/dataset.yaml）
+用法：替换 <> 占位符；删除所有本类注释。
+-->
+scope: SMOKE            # SMOKE / REGRESSION / RELEASE
+# 可选：覆盖该 scope 服务端默认阈值（字段：trigger_accuracy / pass_rate，按需调整或整块删除用默认值）
+thresholds:
+  trigger_accuracy: 0.9
+  pass_rate: 0.8
+
+cases:
+  - id: trigger-pos-01
+    kind: TRIGGER_POSITIVE
+    input: <应当触发本技能的典型输入>
+  - id: trigger-neg-01
+    kind: TRIGGER_NEGATIVE
+    input: <不应当触发本技能的输入>
+  - id: boundary-01
+    kind: BOUNDARY
+    input: <边界条件的输入>
+  - id: task-01
+    kind: TASK
+    input: <完整任务输入>
+    expected_keywords: [<期望输出包含的关键词>]
+    expected_regex: [<可选，期望匹配的正则>]
+    required_tools: []   # 期望调用的工具；禁止调用的写 forbidden_tools
+    llm_judge_rubric: <可选，语义评分要点>
